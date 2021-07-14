@@ -29,6 +29,7 @@
 // SYCL include
 #include <CL/sycl.hpp>
 
+
 namespace Acts::Sycl {
 // Kernel classes in order of execution.
 class ind_copy_bottom_kernel;
@@ -40,9 +41,9 @@ void createSeedsForGroupSycl(
     const QueueWrapper& wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const std::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const std::vector<detail::DeviceSpacePoint>& middleSPs,
-    const std::vector<detail::DeviceSpacePoint>& topSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds) {
   // Each vector stores data of space points in simplified
   // structures of float variables
@@ -87,6 +88,13 @@ void createSeedsForGroupSycl(
     auto deviceBottomSPs = make_device_array<detail::DeviceSpacePoint>(B, *q);
     auto deviceMiddleSPs = make_device_array<detail::DeviceSpacePoint>(M, *q);
     auto deviceTopSPs = make_device_array<detail::DeviceSpacePoint>(T, *q);
+
+    // VecMem device allocations
+    // vecmem::sycl::device_memory_resource resource(q);
+
+    // vecmem::array<detail::DeviceSpacePoint, 2> deviceBottomSPs(resource);
+    
+
 
     // The limit of compatible bottom [top] space points per middle space
     // point is B [T]. Temporarily we reserve buffers of this size (M*B and

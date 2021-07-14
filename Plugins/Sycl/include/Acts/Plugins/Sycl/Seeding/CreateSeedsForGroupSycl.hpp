@@ -16,6 +16,9 @@
 #include "Acts/Plugins/Sycl/Seeding/detail/Types.hpp"
 #include "Acts/Plugins/Sycl/Utilities/QueueWrapper.hpp"
 
+// VecMem includes
+#include "vecmem/containers/vector.hpp"
+
 namespace Acts::Sycl {
 
 /// @brief Seedfinding algorithm implemented in SYCL.
@@ -36,8 +39,8 @@ void createSeedsForGroupSycl(
     const QueueWrapper& wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const std::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const std::vector<detail::DeviceSpacePoint>& middleSPs,
-    const std::vector<detail::DeviceSpacePoint>& topSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds);
 }  // namespace Acts::Sycl
