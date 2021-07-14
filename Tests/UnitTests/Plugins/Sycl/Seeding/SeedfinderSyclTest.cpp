@@ -36,6 +36,10 @@
 #include "CommandLineArguments.h"
 #include "SpacePoint.hpp"
 
+// VecMem includes
+#include <CL/sycl.hpp>
+#include <vecmem/memory/sycl/shared_memory_resource.hpp>
+
 auto readFile(const std::string& filename) -> std::vector<const SpacePoint*> {
   std::string line;
   std::vector<const SpacePoint*> readSP;
@@ -122,6 +126,7 @@ auto setupSpacePointGridConfig(
 
 auto main(int argc, char** argv) -> int {
   auto start_prep = std::chrono::system_clock::now();
+  vecmem::sycl::shared_memory_resource* resource = nullptr;
 
   CommandLineArguments cmdlTool;
   cmdlTool.parse(argc, argv);
@@ -148,6 +153,7 @@ auto main(int argc, char** argv) -> int {
       cmdlTool.csvFormat ? Acts::Logging::WARNING : Acts::Logging::INFO;
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
       config, deviceAtlasCuts,
+      resource,
       Acts::Sycl::QueueWrapper(
           cmdlTool.deviceName,
           Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl)));
