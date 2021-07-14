@@ -17,6 +17,9 @@
 #include "Acts/Plugins/Sycl/Seeding/detail/Types.hpp"
 #include "Acts/Plugins/Sycl/Utilities/QueueWrapper.hpp"
 
+#include "vecmem/memory/memory_resource.hpp"
+#include "vecmem/containers/vector.hpp"
+
 namespace Acts::Sycl {
 
 template <typename external_spacepoint_t>
@@ -25,6 +28,7 @@ class Seedfinder {
   Seedfinder(
       Acts::SeedfinderConfig<external_spacepoint_t> config,
       const Acts::Sycl::DeviceExperimentCuts& cuts,
+      vecmem::memory_resource* resource,
       Acts::Sycl::QueueWrapper wrappedQueue = Acts::Sycl::QueueWrapper());
 
   ~Seedfinder() = default;
@@ -50,6 +54,9 @@ class Seedfinder {
 
   /// Experiment specific cuts
   Acts::Sycl::DeviceExperimentCuts m_deviceCuts;
+
+  /// Vecmem memory resource interface
+  vecmem::memory_resource* m_resource;
 
   /// Configuration object for the device side.
   Acts::Sycl::detail::DeviceSeedfinderConfig m_deviceConfig;

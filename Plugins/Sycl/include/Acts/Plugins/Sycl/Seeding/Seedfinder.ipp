@@ -24,9 +24,11 @@ template <typename external_spacepoint_t>
 Seedfinder<external_spacepoint_t>::Seedfinder(
     Acts::SeedfinderConfig<external_spacepoint_t> config,
     const Acts::Sycl::DeviceExperimentCuts& cuts,
+    vecmem::memory_resource* resource,
     Acts::Sycl::QueueWrapper wrappedQueue)
     : m_config(config),
       m_deviceCuts(cuts),
+      m_resource(resource),
       m_wrappedQueue(std::move(wrappedQueue)) {
   // init m_config
   m_config.highland = 13.6f * std::sqrt(m_config.radLengthPerSeed) *
@@ -67,14 +69,23 @@ std::vector<Acts::Seed<external_spacepoint_t>>
 Seedfinder<external_spacepoint_t>::createSeedsForGroup(
     sp_range_t bottomSPs, sp_range_t middleSPs, sp_range_t topSPs) const {
   std::vector<Seed<external_spacepoint_t>> outputVec;
-
   // As a first step, we create Arrays of Structures (AoS)
   // that are easily comprehensible by the GPU. This allows us
   // less memory access operations than with simple (float) arrays.
 
-  std::vector<detail::DeviceSpacePoint> deviceBottomSPs;
-  std::vector<detail::DeviceSpacePoint> deviceMiddleSPs;
-  std::vector<detail::DeviceSpacePoint> deviceTopSPs;
+   //std::vector<detail::DeviceSpacePoint> deviceBottomSPs;
+   //std::vector<detail::DeviceSpacePoint> deviceMiddleSPs;
+   //std::vector<detail::DeviceSpacePoint> deviceTopSPs;
+
+  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceBottomSPs(bottomSPs, m_resource);
+  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceMiddleSPs(middleSPs, m_resource);
+  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceTopSPs(topSPs, m_resource);
+  
+  vecmem::vector<detail::DeviceSpacePoint> deviceBottomSPs(m_resource);
+  vecmem::vector<detail::DeviceSpacePoint> deviceMiddleSPs(m_resource);
+  vecmem::vector<detail::DeviceSpacePoint> deviceTopSPs(m_resource);
+  
+
 
   std::vector<const Acts::InternalSpacePoint<external_spacepoint_t>*>
       bottomSPvec;
