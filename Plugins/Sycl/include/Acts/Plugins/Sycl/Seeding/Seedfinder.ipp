@@ -72,14 +72,6 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // As a first step, we create Arrays of Structures (AoS)
   // that are easily comprehensible by the GPU. This allows us
   // less memory access operations than with simple (float) arrays.
-
-   //std::vector<detail::DeviceSpacePoint> deviceBottomSPs;
-   //std::vector<detail::DeviceSpacePoint> deviceMiddleSPs;
-   //std::vector<detail::DeviceSpacePoint> deviceTopSPs;
-
-  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceBottomSPs(bottomSPs, m_resource);
-  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceMiddleSPs(middleSPs, m_resource);
-  // vecmem::data::jagged_vector_data<detail::DeviceSpacePoint> deviceTopSPs(topSPs, m_resource);
   
   vecmem::vector<detail::DeviceSpacePoint> deviceBottomSPs(m_resource);
   vecmem::vector<detail::DeviceSpacePoint> deviceMiddleSPs(m_resource);

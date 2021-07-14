@@ -126,7 +126,7 @@ auto setupSpacePointGridConfig(
 
 auto main(int argc, char** argv) -> int {
   auto start_prep = std::chrono::system_clock::now();
-  vecmem::sycl::shared_memory_resource* resource = nullptr;
+  vecmem::sycl::shared_memory_resource resource;
 
   CommandLineArguments cmdlTool;
   cmdlTool.parse(argc, argv);
@@ -153,7 +153,7 @@ auto main(int argc, char** argv) -> int {
       cmdlTool.csvFormat ? Acts::Logging::WARNING : Acts::Logging::INFO;
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
       config, deviceAtlasCuts,
-      resource,
+      &resource,
       Acts::Sycl::QueueWrapper(
           cmdlTool.deviceName,
           Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl)));
