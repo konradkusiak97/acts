@@ -41,9 +41,9 @@ void createSeedsForGroupSycl(
     const QueueWrapper& wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
-    vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
-    vecmem::vector<detail::DeviceSpacePoint>& topSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds) {
   // Each vector stores data of space points in simplified
   // structures of float variables
