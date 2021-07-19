@@ -61,6 +61,11 @@ QueueWrapper::QueueWrapper(const QueueWrapper& other)
       m_ownsQueue(false),
       m_logger(getDefaultLogger("Sycl::QueueWrapper", Logging::INFO)) {}
 
+QueueWrapper::QueueWrapper(cl::sycl::queue* queue)
+    : m_queue(queue),
+      m_ownsQueue(false),
+      m_logger(getDefaultLogger("Sycl::QueueWrapper", Logging::INFO)) {}
+
 QueueWrapper::~QueueWrapper() {
   if (m_ownsQueue && (m_queue != nullptr)) {
     delete m_queue;

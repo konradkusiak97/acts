@@ -37,6 +37,8 @@ class QueueWrapper {
   /// Copy constructor
   /// Does not give ownership to the underlying pointer.
   QueueWrapper(const QueueWrapper& other);
+  /// Wrap existing cl::sycl::queue object
+  QueueWrapper(cl::sycl::queue* queue);
   /// Destructor
   /// Destroy the underlying pointer, but only if it is owned.
   ~QueueWrapper();
