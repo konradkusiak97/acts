@@ -85,14 +85,16 @@ void createSeedsForGroupSycl(
         q->get_device().get_info<cl::sycl::info::device::max_work_group_size>();
 
     // Device allocations
+    
     auto deviceBottomSPs = make_device_array<detail::DeviceSpacePoint>(B, *q);
     auto deviceMiddleSPs = make_device_array<detail::DeviceSpacePoint>(M, *q);
     auto deviceTopSPs = make_device_array<detail::DeviceSpacePoint>(T, *q);
+    
 
     // VecMem device allocations
-    // vecmem::sycl::device_memory_resource resource(q);
-
-    // vecmem::array<detail::DeviceSpacePoint, 2> deviceBottomSPs(resource);
+    auto inputBottomSPs = vecmem::get_data(bottomSPs);
+    auto inputMiddleSPs = vecmem::get_data(middleSPs);
+    auto inputTopSPs = vecmem::get_data(topSPs);
     
 
 
@@ -101,15 +103,19 @@ void createSeedsForGroupSycl(
     // M*T). We store the indices of bottom [top] space points in bottomSPs
     // [topSPs]. We move the indices to optimal size vectors for easier
     // indexing.
+
+    
     auto deviceTmpIndBot = make_device_array<uint32_t>(M * B, *q);
     auto deviceTmpIndTop = make_device_array<uint32_t>(M * T, *q);
-
+    
+    
     q->memcpy(deviceBottomSPs.get(), bottomSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (B));
     q->memcpy(deviceMiddleSPs.get(), middleSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (M));
     q->memcpy(deviceTopSPs.get(), topSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (T));
+    
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
     // We'll have a total of M*B threads globally, but we need to give the
@@ -143,7 +149,7 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countBotDupletsAcc(countBotBuf, h);
         detail::DupletSearch<detail::SpacePointType::Bottom, AtomicAccessor>
-            kernel(M, deviceMiddleSPs, B, deviceBottomSPs, deviceTmpIndBot,
+            kernel(M, inputMiddleSPs, B, inputBottomSPs, deviceTmpIndBot,
                    countBotDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
@@ -153,7 +159,7 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countTopDupletsAcc(countTopBuf, h);
         detail::DupletSearch<detail::SpacePointType::Top, AtomicAccessor>
-            kernel(M, deviceMiddleSPs, T, deviceTopSPs, deviceTmpIndTop,
+            kernel(M, inputMiddleSPs, T, inputTopSPs, deviceTmpIndTop,
                    countTopDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
       });

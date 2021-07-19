@@ -17,6 +17,9 @@
 // SYCL include(s).
 #include <CL/sycl.hpp>
 
+// VecMem includes
+#include "vecmem/containers/device_vector.hpp"
+
 // System include(s).
 #include <cstdint>
 
@@ -35,16 +38,16 @@ class DupletSearch {
  public:
   /// Constructor with all the necessary arguments
   DupletSearch(uint32_t nMiddleSPs,
-               const device_array<DeviceSpacePoint>& middleSPs,
+               vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
                uint32_t nOtherSPs,
-               const device_array<DeviceSpacePoint>& otherSPs,
+               vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
                device_array<uint32_t>& middleOtherSPIndices,
                const AtomicAccessorType& middleOtherSPCounts,
                const DeviceSeedfinderConfig& config)
       : m_nMiddleSPs(nMiddleSPs),
-        m_middleSPs(middleSPs.get()),
+        m_middleSPs(middleSPs),
         m_nOtherSPs(nOtherSPs),
-        m_otherSPs(otherSPs.get()),
+        m_otherSPs(otherSPs),
         m_middleOtherSPIndices(middleOtherSPIndices.get()),
         m_middleOtherSPCounts(middleOtherSPCounts),
         m_config(config) {}
@@ -62,11 +65,13 @@ class DupletSearch {
       return;
     }
 
+    vecmem::device_vector<const detail::DeviceSpacePoint> device_middleSPs(m_middleSPs);
+    vecmem::device_vector<const detail::DeviceSpacePoint> device_otherSPs(m_otherSPs);
     // Create a copy of the spacepoint objects for the current thread. On
     // dedicated GPUs this provides a better performance than accessing
     // variables one-by-one from global device memory.
-    const DeviceSpacePoint middleSP = m_middleSPs[middleIndex];
-    const DeviceSpacePoint otherSP = m_otherSPs[otherIndex];
+    auto middleSP = device_middleSPs[middleIndex];
+    auto otherSP = device_otherSPs[otherIndex];
 
     // Calculate the variables that the duplet quality selection are based on.
     // Note that the asserts of the functor make sure that 'OtherSPType' must be
@@ -96,11 +101,11 @@ class DupletSearch {
   /// Total number of middle spacepoints
   uint32_t m_nMiddleSPs;
   /// Pointer to the middle spacepoints (in global device memory)
-  const DeviceSpacePoint* m_middleSPs;
+  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPs;
   /// Total number of "other" (bottom or top) spacepoints
   uint32_t m_nOtherSPs;
   /// Pointer to the "other" (bottom or top) spacepoints (in global device mem.)
-  const DeviceSpacePoint* m_otherSPs;
+  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
 
   /// The 2D array storing the compatible middle-other spacepoint indices
   uint32_t* m_middleOtherSPIndices;
