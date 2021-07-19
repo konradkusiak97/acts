@@ -39,6 +39,7 @@
 // VecMem includes
 #include <CL/sycl.hpp>
 #include <vecmem/memory/sycl/shared_memory_resource.hpp>
+#include "../../sycl/src/utils/sycl/device_selector.hpp"
 
 auto readFile(const std::string& filename) -> std::vector<const SpacePoint*> {
   std::string line;
@@ -126,7 +127,9 @@ auto setupSpacePointGridConfig(
 
 auto main(int argc, char** argv) -> int {
   auto start_prep = std::chrono::system_clock::now();
-  vecmem::sycl::shared_memory_resource resource;
+
+  cl::sycl::queue queue{vecmem::sycl::device_selector()};
+  vecmem::sycl::shared_memory_resource resource(&queue);
 
   CommandLineArguments cmdlTool;
   cmdlTool.parse(argc, argv);
@@ -155,8 +158,7 @@ auto main(int argc, char** argv) -> int {
       config, deviceAtlasCuts,
       &resource,
       Acts::Sycl::QueueWrapper(
-          cmdlTool.deviceName,
-          Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl)));
+          &queue));
   Acts::Seedfinder<SpacePoint> normalSeedfinder(config);
   auto globalTool =
       [=](const SpacePoint& sp, float /*unused*/, float /*unused*/,
