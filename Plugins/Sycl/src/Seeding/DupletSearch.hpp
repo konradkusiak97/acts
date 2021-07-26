@@ -19,6 +19,7 @@
 
 // VecMem includes
 #include "vecmem/containers/device_vector.hpp"
+#include "vecmem/containers/jagged_device_vector.hpp"
 
 // System include(s).
 #include <cstdint>
@@ -37,18 +38,16 @@ class DupletSearch {
 
  public:
   /// Constructor with all the necessary arguments
-  DupletSearch(uint32_t nMiddleSPs,
-               vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
-               uint32_t nOtherSPs,
+  DupletSearch(vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
                vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
-               device_array<uint32_t>& middleOtherSPIndices,
+               vecmem::data::jagged_vector_view<uint32_t>& middleOtherSPIndicesView,
                const AtomicAccessorType& middleOtherSPCounts,
                const DeviceSeedfinderConfig& config)
-      : m_nMiddleSPs(nMiddleSPs),
+      : m_nMiddleSPs(middleSPs.size()),
         m_middleSPs(middleSPs),
-        m_nOtherSPs(nOtherSPs),
+        m_nOtherSPs(otherSPs.size()),
         m_otherSPs(otherSPs),
-        m_middleOtherSPIndices(middleOtherSPIndices.get()),
+        m_middleOtherSPIndicesView(middleOtherSPIndicesView),
         m_middleOtherSPCounts(middleOtherSPCounts),
         m_config(config) {}
 
@@ -65,8 +64,12 @@ class DupletSearch {
       return;
     }
 
+    // Creating device vecmem vectors needed.
     vecmem::device_vector<const detail::DeviceSpacePoint> device_middleSPs(m_middleSPs);
     vecmem::device_vector<const detail::DeviceSpacePoint> device_otherSPs(m_otherSPs);
+
+    vecmem::jagged_device_vector<uint32_t> middleOtherSPIndices(m_middleOtherSPIndicesView);
+
     // Create a copy of the spacepoint objects for the current thread. On
     // dedicated GPUs this provides a better performance than accessing
     // variables one-by-one from global device memory.
@@ -93,7 +96,7 @@ class DupletSearch {
         (zOrigin <= m_config.collisionRegionMax)) {
       // We keep counting duplets with atomic access.
       const uint32_t ind = m_middleOtherSPCounts[middleIndex].fetch_add(1);
-      m_middleOtherSPIndices[middleIndex * m_nOtherSPs + ind] = otherIndex;
+      middleOtherSPIndices[middleIndex * m_nOtherSPs].push_back(otherIndex);
     }
   }
 
@@ -107,8 +110,8 @@ class DupletSearch {
   /// Pointer to the "other" (bottom or top) spacepoints (in global device mem.)
   vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
 
-  /// The 2D array storing the compatible middle-other spacepoint indices
-  uint32_t* m_middleOtherSPIndices;
+  /// The 2D array (jagged vector now) storing the compatible middle-other spacepoint indices
+  vecmem::data::jagged_vector_view<uint32_t> m_middleOtherSPIndicesView;
   /// The atomic accessor used for modifying the count of compatible
   /// middle-other spacepoint duplets
   AtomicAccessorType m_middleOtherSPCounts;
