@@ -29,6 +29,9 @@
 // SYCL include
 #include <CL/sycl.hpp>
 
+// VecMem includes
+#include "vecmem/containers/jagged_vector.hpp"
+
 
 namespace Acts::Sycl {
 // Kernel classes in order of execution.
@@ -38,6 +41,7 @@ class triplet_search_kernel;
 class filter_2sp_fixed_kernel;
 
 void createSeedsForGroupSycl(
+    vecmem::memory_resource* resource,
     const QueueWrapper& wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
@@ -91,7 +95,7 @@ void createSeedsForGroupSycl(
     auto deviceTopSPs = make_device_array<detail::DeviceSpacePoint>(T, *q);
     
 
-    // VecMem device allocations
+    // Creating vecmem::vector::view(s)
     auto inputBottomSPs = vecmem::get_data(bottomSPs);
     auto inputMiddleSPs = vecmem::get_data(middleSPs);
     auto inputTopSPs = vecmem::get_data(topSPs);
@@ -103,19 +107,23 @@ void createSeedsForGroupSycl(
     // M*T). We store the indices of bottom [top] space points in bottomSPs
     // [topSPs]. We move the indices to optimal size vectors for easier
     // indexing.
-
-    
     auto deviceTmpIndBot = make_device_array<uint32_t>(M * B, *q);
     auto deviceTmpIndTop = make_device_array<uint32_t>(M * T, *q);
+
+    // Instead of the above, use vecmem jagged vectors
+    vecmem::jagged_vector<uint32_t> jagVecBot(resource);
+    vecmem::jagged_vector<uint32_t> jagVecTop(resource);
     
-    
+    // Create jagged vector views to pass to Duplet Search
+    auto tmpIndBot = vecmem::get_data(jagVecBot);
+    auto tmpIndTop = vecmem::get_data(jagVecTop);
+
     q->memcpy(deviceBottomSPs.get(), bottomSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (B));
     q->memcpy(deviceMiddleSPs.get(), middleSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (M));
     q->memcpy(deviceTopSPs.get(), topSPs.data(),
               sizeof(detail::DeviceSpacePoint) * (T));
-    
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
     // We'll have a total of M*B threads globally, but we need to give the
@@ -149,7 +157,7 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countBotDupletsAcc(countBotBuf, h);
         detail::DupletSearch<detail::SpacePointType::Bottom, AtomicAccessor>
-            kernel(M, inputMiddleSPs, B, inputBottomSPs, deviceTmpIndBot,
+            kernel(inputMiddleSPs, inputBottomSPs, tmpIndBot,
                    countBotDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
@@ -159,7 +167,7 @@ void createSeedsForGroupSycl(
       q->submit([&](cl::sycl::handler& h) {
         AtomicAccessor countTopDupletsAcc(countTopBuf, h);
         detail::DupletSearch<detail::SpacePointType::Top, AtomicAccessor>
-            kernel(M, inputMiddleSPs, T, inputTopSPs, deviceTmpIndTop,
+            kernel(inputMiddleSPs, inputTopSPs, tmpIndTop,
                    countTopDupletsAcc, seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
       });

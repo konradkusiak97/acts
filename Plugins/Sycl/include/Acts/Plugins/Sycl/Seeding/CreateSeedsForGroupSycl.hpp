@@ -18,6 +18,7 @@
 
 // VecMem includes
 #include "vecmem/containers/vector.hpp"
+#include "vecmem/memory/memory_resource.hpp"
 
 namespace Acts::Sycl {
 
@@ -36,6 +37,7 @@ namespace Acts::Sycl {
 ///                      point structures of top space points
 /// @param[out] seeds holds of the generated seed indices and weight
 void createSeedsForGroupSycl(
+    vecmem::memory_resource* resource,
     const QueueWrapper& wrappedQueue,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
