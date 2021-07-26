@@ -109,7 +109,7 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   std::vector<std::vector<detail::SeedData>> seeds;
 
   // Call the SYCL seeding algorithm
-  createSeedsForGroupSycl(m_wrappedQueue, m_deviceConfig, m_deviceCuts,
+  createSeedsForGroupSycl(m_resource, m_wrappedQueue, m_deviceConfig, m_deviceCuts,
                           deviceBottomSPs, deviceMiddleSPs, deviceTopSPs,
                           seeds);
 
