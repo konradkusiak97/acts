@@ -107,23 +107,27 @@ void createSeedsForGroupSycl(
     // M*T). We store the indices of bottom [top] space points in bottomSPs
     // [topSPs]. We move the indices to optimal size vectors for easier
     // indexing.
-    auto deviceTmpIndBot = make_device_array<uint32_t>(M * B, *q);
-    auto deviceTmpIndTop = make_device_array<uint32_t>(M * T, *q);
 
-    // Instead of the above, use vecmem jagged vectors
-    vecmem::jagged_vector<uint32_t> jagVecBot(resource);
-    vecmem::jagged_vector<uint32_t> jagVecTop(resource);
-    
+    // Use VecMem jagged vectors
+    vecmem::jagged_vector<uint32_t> jVbottom(resource);
+    vecmem::jagged_vector<uint32_t> jVtop(resource);
+
+    // Initialize M outer vectors
+    jVbottom.resize(M);
+    jVtop.resize(M);
+
+    // Initialize the inner vectors of size B
+    for (uint32_t i = 0; i < M; ++i) {
+        jVbottom[i].reserve(B);
+    }
+    // Initialize the inner vectors of size T
+    for (uint32_t i = 0; i < M; ++i) {
+        jVtop[i].reserve(T);
+    }
+
     // Create jagged vector views to pass to Duplet Search
-    auto tmpIndBot = vecmem::get_data(jagVecBot);
-    auto tmpIndTop = vecmem::get_data(jagVecTop);
-
-    q->memcpy(deviceBottomSPs.get(), bottomSPs.data(),
-              sizeof(detail::DeviceSpacePoint) * (B));
-    q->memcpy(deviceMiddleSPs.get(), middleSPs.data(),
-              sizeof(detail::DeviceSpacePoint) * (M));
-    q->memcpy(deviceTopSPs.get(), topSPs.data(),
-              sizeof(detail::DeviceSpacePoint) * (T));
+    auto tmpIndBotView = vecmem::get_data(jVbottom);
+    auto tmpIndTopView = vecmem::get_data(jVtop);
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
     // We'll have a total of M*B threads globally, but we need to give the
@@ -143,34 +147,19 @@ void createSeedsForGroupSycl(
     // ********** DUPLET SEARCH - BEGIN ********** //
     //*********************************************//
 
-    // Atomic accessor type used throughout the code.
-    using AtomicAccessor =
-        sycl::ONEAPI::atomic_accessor<uint32_t, 1,
-                                      sycl::ONEAPI::memory_order::relaxed,
-                                      sycl::ONEAPI::memory_scope::device>;
-    {
-      // Allocate temporary buffers on top of the count arrays booked in USM.
-      sycl::buffer<uint32_t> countBotBuf(countBotDuplets.data(), M);
-      sycl::buffer<uint32_t> countTopBuf(countTopDuplets.data(), M);
-
       // Perform the middle-bottom duplet search.
       q->submit([&](cl::sycl::handler& h) {
-        AtomicAccessor countBotDupletsAcc(countBotBuf, h);
-        detail::DupletSearch<detail::SpacePointType::Bottom, AtomicAccessor>
-            kernel(inputMiddleSPs, inputBottomSPs, tmpIndBot,
-                   countBotDupletsAcc, seedfinderConfig);
+        detail::DupletSearch<detail::SpacePointType::Bottom>
+            kernel(inputMiddleSPs, inputBottomSPs, tmpIndBotView, seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
-      });
-
+      }).wait();
       // Perform the middle-top duplet search.
       q->submit([&](cl::sycl::handler& h) {
-        AtomicAccessor countTopDupletsAcc(countTopBuf, h);
-        detail::DupletSearch<detail::SpacePointType::Top, AtomicAccessor>
-            kernel(inputMiddleSPs, inputTopSPs, tmpIndTop,
-                   countTopDupletsAcc, seedfinderConfig);
+        detail::DupletSearch<detail::SpacePointType::Top>
+            kernel(inputMiddleSPs, inputTopSPs, tmpIndTop, seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
-      });
+      }).wait();
     }  // sync (buffers get destroyed and duplet counts are copied back to
        // countBotDuplets and countTopDuplets)
 
@@ -178,7 +167,13 @@ void createSeedsForGroupSycl(
     // *********** DUPLET SEARCH - END *********** //
     //*********************************************//
 
-    // retrieve results from counting duplets
+    // Retrieve results from counting duplets
+    // Firstly the sizes of inner vectors
+    for (uint32_t i = 0; i < M; ++i) {
+      countBotDuplets[i] = jVbottom[i].size();
+      countTopDuplets[i] = jVtop[i].size();
+    }
+
     {
       // Construct prefix sum arrays of duplet counts.
       // These will later be used to index other arrays based on middle SP
@@ -248,7 +243,7 @@ void createSeedsForGroupSycl(
         To find out where the indices of bottom SPs start for a particular
         middle SP, we use prefix sum arrays.
         We know how many duplets were found for each middle SP (this is
-        deviceCountBotDuplets).
+        countBotDuplets).
         -----------------
         | 4 | 2 | 0 | 3 |
         -----------------
@@ -328,7 +323,7 @@ void createSeedsForGroupSycl(
       // We will use these for easier indexing.
       {
         const uint32_t* deviceMidIndPerBotPtr = deviceMidIndPerBot.get();
-        const uint32_t* deviceTmpIndBotPtr = deviceTmpIndBot.get();
+        const uint32_t* deviceTmpIndBotPtr = jVbottom.get();
         const uint32_t* deviceSumBotPtr = deviceSumBot.get();
         uint32_t* deviceIndBotPtr = deviceIndBot.get();
         q->submit([&](cl::sycl::handler& h) {
@@ -345,7 +340,7 @@ void createSeedsForGroupSycl(
         });
 
         const uint32_t* deviceMidIndPerTopPtr = deviceMidIndPerTop.get();
-        const uint32_t* deviceTmpIndTopPtr = deviceTmpIndTop.get();
+        const uint32_t* deviceTmpIndTopPtr = jVtop.get();
         const uint32_t* deviceSumTopPtr = deviceSumTop.get();
         uint32_t* deviceIndTopPtr = deviceIndTop.get();
         q->submit([&](cl::sycl::handler& h) {
