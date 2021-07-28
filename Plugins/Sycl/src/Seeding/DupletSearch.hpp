@@ -38,8 +38,8 @@ class DupletSearch {
 
  public:
   /// Constructor with all the necessary arguments
-  DupletSearch(vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
-               vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
+  DupletSearch(const vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
+               const vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
                vecmem::data::jagged_vector_view<uint32_t>& middleOtherSPIndicesView,
                const DeviceSeedfinderConfig& config)
       : m_nMiddleSPs(middleSPs.size()),
@@ -65,7 +65,6 @@ class DupletSearch {
     // Creating device vecmem vectors needed.
     vecmem::device_vector<const detail::DeviceSpacePoint> device_middleSPs(m_middleSPs);
     vecmem::device_vector<const detail::DeviceSpacePoint> device_otherSPs(m_otherSPs);
-
     vecmem::jagged_device_vector<uint32_t> middleOtherSPIndices(m_middleOtherSPIndicesView);
 
     // Create a copy of the spacepoint objects for the current thread. On
@@ -99,12 +98,12 @@ class DupletSearch {
  private:
   /// Total number of middle spacepoints
   uint32_t m_nMiddleSPs;
-  /// Pointer to the middle spacepoints (in global device memory)
-  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPs;
+  /// VecMem vector view to the Middle space points
+  const vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPs;
   /// Total number of "other" (bottom or top) spacepoints
   uint32_t m_nOtherSPs;
-  /// Pointer to the "other" (bottom or top) spacepoints (in global device mem.)
-  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
+  /// VecMem vector view to the "other" (bottom or top) spacepoints (in global device mem.)
+  const vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
 
   /// The 2D array (jagged vector now) storing the compatible middle-other spacepoint indices
   vecmem::data::jagged_vector_view<uint32_t> m_middleOtherSPIndicesView;
