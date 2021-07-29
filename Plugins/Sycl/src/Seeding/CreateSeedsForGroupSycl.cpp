@@ -287,62 +287,65 @@ void createSeedsForGroupSycl(
 
       // Copy indices from temporary matrices to final, optimal size vectors.
       // We will use these for easier indexing.
-      {
-       // View of the vector that stores the indices of the middleSPs of the edges 
-       // E.G. |0|0|0|0|1|1|3|3|3| - first 4 edges correspond to middle 0, then 2 to middle1..
-       auto indMidBotCompView = vecmem::get_data(indMidBotComp);
-
-       // View of the Bottom prefix sum vector with leading 0
-       // E.G. |0|4|6|6|9| - this corresponds to countBotDuplets = |4|2|0|3|.
-       auto sumBotCompUptoMidView = vecmem::get_data(sumBotCompUptoMid);
-
-       // For the matrix made out of jagged vector, use previously created view: tmpIndBotView.
-       // Create new vecmem vector to store the compatible indices of bottom space points
-       vecmem::vector<uint32_t> indBottomSPs(resource);
-       // Initialize its capacity and create view
-       indBottomSPs.reserve(edgesBottom);
-       auto indBottomSPsView = vecmem::get_data(indBottomSPs);
       
+      // View of the vector that stores the indices of the middleSPs of the edges 
+      // E.G. |0|0|0|0|1|1|3|3|3| - first 4 edges correspond to middle 0, then 2 to middle1..
+      auto indMidBotCompView = vecmem::get_data(indMidBotComp);
+      // View of the Bottom prefix sum vector with leading 0
+      // E.G. |0|4|6|6|9| - this corresponds to countBotDuplets = |4|2|0|3|.
+      auto sumBotCompUptoMidView = vecmem::get_data(sumBotCompUptoMid);
+      // For the matrix made out of jagged vector, use previously created view: tmpIndBotView.
+      // Create new vecmem vector to store the compatible indices of bottom space points
+      vecmem::vector<uint32_t> indBottomSPs(resource);
+      // Initialize its capacity and create view
+      indBottomSPs.reserve(edgesBottom);
+      auto indBottomSPsView = vecmem::get_data(indBottomSPs);
+
+      /// Now for the Top SPs
+      auto indMidTopCompView = vecmem::get_data(indMidTopComp);
+      auto sumTopCompUptoMidView = vecmem::get_data(sumTopCompUptoMid);
+      // Create new vecmem vector to store the compatible indices of top space points
+      vecmem::vector<uint32_t> indTopSPs(resource);
+      // Initialize its capacity and create view
+      indTopSPs.reserve(edgesTop);
+      auto indTopSPsView = vecmem::get_data(indTopSPs);
+      {
         q->submit([&](cl::sycl::handler& h) {
           h.parallel_for<ind_copy_bottom_kernel>(
-              edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
+              edgesBotNdRange, [&](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
                 vecmem::device_vector<const uint32_t> deviceIndMidBot(indMidBotCompView);
-                vecmem::jagged_device_vector<const uint32_t> deviceTmpIndBot(tmpIndBotView);
+                vecmem::jagged_device_vector<uint32_t> deviceTmpIndBot(tmpIndBotView);
                 vecmem::device_vector<const uint32_t> deviceSumBot(sumBotCompUptoMidView);
                 vecmem::device_vector<uint32_t> deviceBottomSPs(indBottomSPsView);
                 if (idx < edgesBottom) {
                   auto mid = deviceIndMidBot[idx];
-                  auto ind =
-                      deviceTmpIndBot[mid * B + idx - deviceSumBot[mid]];
-                  deviceBottomSPs.push_back(ind);
+                  if (idx < deviceTmpIndBot[mid].size()) {
+                    auto ind =
+                        deviceTmpIndBot[mid][idx];
+                    deviceBottomSPs.push_back(ind);
+                  }
                 }
               });
         }).wait();
 
-       auto indMidTopCompView = vecmem::get_data(indMidTopComp);
-       auto sumTopCompUptoMidView = vecmem::get_data(sumTopCompUptoMid);
-       // Create new vecmem vector to store the compatible indices of top space points
-       vecmem::vector<uint32_t> indTopSPs(resource);
-       // Initialize its capacity and create view
-       indTopSPs.reserve(edgesTop);
-       auto indTopSPsView = vecmem::get_data(indTopSPs);
-
         q->submit([&](cl::sycl::handler& h) {
           h.parallel_for<ind_copy_top_kernel>(
-              edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
+              edgesTopNdRange, [&](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
-                vecmem::device_vector<uint32_t> deviceIndMidTop(indMidTopCompView);
+                vecmem::device_vector<const uint32_t> deviceIndMidTop(indMidTopCompView);
                 vecmem::jagged_device_vector<uint32_t> deviceTmpIndTop(tmpIndTopView);
-                vecmem::device_vector<uint32_t> deviceSumTop(sumTopCompUptoMidView);
+                vecmem::device_vector<const uint32_t> deviceSumTop(sumTopCompUptoMidView);
                 vecmem::device_vector<uint32_t> deviceTopSPs(indTopSPsView);
                 if (idx < edgesTop) {
                   auto mid = deviceIndMidTop[idx];
-                  auto ind =
-                      deviceTmpIndTop[mid * T + idx - deviceSumTop[mid]];
-                  deviceTopSPs.push_back(ind);
+                  if (idx < deviceTmpIndTop[mid].size()) {
+                    auto ind =
+                        deviceTmpIndTop[mid][idx];
+                    deviceTopSPs.push_back(ind);
+                  }
                 }
               });
         }).wait();
@@ -361,10 +364,10 @@ void createSeedsForGroupSycl(
       auto linB = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Bottom> kernel(
             inputMiddleSPs, inputBottomSPs, indMidBotCompView,
-            indBotSPsView, edgesBottom, deviceLinBotView);
+            indBottomSPsView, edgesBottom, deviceLinBotView);
         h.parallel_for<class TransformCoordBottomKernel>(edgesBotNdRange,
                                                          kernel);
-      }).wait();
+      });
 
       // coordinate transformation middle-top pairs
       auto linT = q->submit([&](cl::sycl::handler& h) {
@@ -372,7 +375,7 @@ void createSeedsForGroupSycl(
             inputMiddleSPs, inputTopSPs, indMidTopCompView,
             indTopSPsView, edgesTop, deviceLinTopView);
         h.parallel_for<class TransformCoordTopKernel>(edgesTopNdRange, kernel);
-      }).wait();
+      });
 
       //************************************************//
       // **** LINEAR EQUATION TRANSFORMATION - END **** //
