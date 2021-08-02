@@ -52,8 +52,8 @@ class DupletSearch {
   /// Operator performing the duplet search
   void operator()(cl::sycl::nd_item<2> item) const {
     // Get the indices of the spacepoints to evaluate.
-    auto middleIndex = item.get_global_id(0);
-    auto otherIndex = item.get_global_id(1);
+    const auto middleIndex = item.get_global_id(0);
+    const auto otherIndex = item.get_global_id(1);
 
     // We check whether this thread actually makes sense (within bounds).
     // The number of threads is usually a factor of 2, or 3*2^k (k \in N), etc.
