@@ -30,9 +30,10 @@
 #include <CL/sycl.hpp>
 
 // VecMem includes
+#include "vecmem/containers/device_vector.hpp"
+#include "vecmem/containers/jagged_device_vector.hpp"
 #include "vecmem/containers/jagged_vector.hpp"
 #include "vecmem/containers/vector.hpp"
-
 
 namespace Acts::Sycl {
 // Kernel classes in order of execution.
@@ -91,14 +92,14 @@ void createSeedsForGroupSycl(
 
   // Use VecMem jagged vectors for the "matrices" with middle SPs and their 
   // compatible Bottom/Top SPs.
-  vecmem::jagged_vector<uint32_t> jvMidBottomSPs(resource);
+  vecmem::jagged_vector<uint32_t> jvMidBotSPs(resource);
   vecmem::jagged_vector<uint32_t> jvMidTopSPs(resource);
   // Initialize M outer vectors
-  jvMidBottomSPs.resize(M);
+  jvMidBotSPs.resize(M);
   jvMidTopSPs.resize(M);
   // Initialize the inner vectors of size B
   for (uint32_t i = 0; i < M; ++i) {
-      jvMidBottomSPs[i].reserve(B);
+      jvMidBotSPs[i].reserve(B);
   }
   // Initialize the inner vectors of size T
   for (uint32_t i = 0; i < M; ++i) {
@@ -113,9 +114,9 @@ void createSeedsForGroupSycl(
         q->get_device().get_info<cl::sycl::info::device::max_work_group_size>();
 
     // Creating vecmem::vector::view(s) of the Bottom, Top and Middle space points
-    auto inputBottomSPs = vecmem::get_data(bottomSPs);
-    auto inputMiddleSPs = vecmem::get_data(middleSPs);
-    auto inputTopSPs = vecmem::get_data(topSPs);
+    auto bottomSPsView = vecmem::get_data(bottomSPs);
+    auto middleSPsView = vecmem::get_data(middleSPs);
+    auto topSPsView = vecmem::get_data(topSPs);
 
     // The limit of compatible bottom [top] space points per middle space
     // point is B [T]. Temporarily we reserve buffers of this size (M*B and
@@ -129,9 +130,9 @@ void createSeedsForGroupSycl(
                                       sycl::ONEAPI::memory_scope::device>;
   
 
-    // Create jagged vector views to pass to Duplet Search
-    auto tmpIndBotView = vecmem::get_data(jvMidBottomSPs);
-    auto tmpIndTopView = vecmem::get_data(jvMidTopSPs);
+    // Making the first vecmem::get_data on the jagged vectors
+    auto jvMidBotData = vecmem::get_data(jvMidBotSPs);
+    auto jvMidTopData = vecmem::get_data(jvMidTopSPs);
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
     // We'll have a total of M*B threads globally, but we need to give the
@@ -150,14 +151,14 @@ void createSeedsForGroupSycl(
       // Perform the middle-bottom duplet search.
       q->submit([&](cl::sycl::handler& h) {
         detail::DupletSearch<detail::SpacePointType::Bottom>
-            kernel(inputMiddleSPs, inputBottomSPs, tmpIndBotView, seedfinderConfig);
+            kernel(middleSPsView, bottomSPsView, vecmem::get_data(jvMidBotData), seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
       }).wait();
       // Perform the middle-top duplet search.
       q->submit([&](cl::sycl::handler& h) {
         detail::DupletSearch<detail::SpacePointType::Top>
-            kernel(inputMiddleSPs, inputTopSPs, tmpIndTopView, seedfinderConfig);
+            kernel(middleSPsView, topSPsView, vecmem::get_data(jvMidTopData), seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
       }).wait();
     }  // sync (buffers get destroyed and duplet counts are copied back to
@@ -169,7 +170,7 @@ void createSeedsForGroupSycl(
     {
       // Retrieve results from Duplet search
       for (uint32_t i = 0; i < M; ++i) {
-        countBotDuplets[i] = jvMidBottomSPs[i].size();
+        countBotDuplets[i] = jvMidBotSPs[i].size();
         countTopDuplets[i] = jvMidTopSPs[i].size();
       }
 
@@ -280,7 +281,6 @@ void createSeedsForGroupSycl(
       sycl::buffer<uint32_t> numTopDupletsBuf(countTopDuplets.data(), M);
       // Partial sum array of the combinations of compatible bottom and top
       // space points per middle space point.
-      auto deviceSumComb = make_device_array<uint32_t>(M + 1, *q);
 
       // Allocations for coordinate transformation.
       vecmem::vector<detail::DeviceLinEqCircle> deviceLinBot(resource);
@@ -293,63 +293,59 @@ void createSeedsForGroupSycl(
 
       // Copy indices from temporary matrices to final, optimal size vectors.
       // We will use these for easier indexing.
-      
+
       // View of the vector that stores the indices of the middleSPs of the edges 
       // E.G. |0|0|0|0|1|1|3|3|3| - first 4 edges correspond to middle 0, then 2 to middle1..
       auto indMidBotCompView = vecmem::get_data(indMidBotComp);
+      auto indMidTopCompView = vecmem::get_data(indMidTopComp);
       // View of the Bottom prefix sum vector with leading 0
       // E.G. |0|4|6|6|9| - this corresponds to jagged vecmem vector size = |4|2|0|3|.
       auto sumBotCompUptoMidView = vecmem::get_data(sumBotCompUptoMid);
-      // For the matrix made out of jagged vector, use previously created view: tmpIndBotView.
+      auto sumTopCompUptoMidView = vecmem::get_data(sumTopCompUptoMid);
+      // For the matrix made out of jagged vector, use previously created view: jvMidBotData.
       // Create new vecmem vector to store the compatible indices of bottom space points
       vecmem::vector<uint32_t> indBottomSPs(resource);
-      // Initialize its capacity and create view
-      indBottomSPs.reserve(edgesBottom);
-      auto indBottomSPsView = vecmem::get_data(indBottomSPs);
-
-      /// Now for the Top SPs
-      auto indMidTopCompView = vecmem::get_data(indMidTopComp);
-      auto sumTopCompUptoMidView = vecmem::get_data(sumTopCompUptoMid);
-      // Create new vecmem vector to store the compatible indices of top space points
       vecmem::vector<uint32_t> indTopSPs(resource);
       // Initialize its capacity and create view
+      indBottomSPs.reserve(edgesBottom);
       indTopSPs.reserve(edgesTop);
+      auto indBottomSPsView = vecmem::get_data(indBottomSPs);
       auto indTopSPsView = vecmem::get_data(indTopSPs);
       {
         q->submit([&](cl::sycl::handler& h) {
-          auto input_tmpIndBotView = vecmem::get_data(tmpIndBotView);
+          auto jvMidBotView = vecmem::get_data(jvMidBotData);
           h.parallel_for<ind_copy_bottom_kernel>(
               edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
                 vecmem::device_vector<const uint32_t> deviceIndMidBot(indMidBotCompView);
-                vecmem::jagged_device_vector<uint32_t> deviceTmpIndBot(input_tmpIndBotView);
+                vecmem::jagged_device_vector<uint32_t> deviceJvMidBot(jvMidBotView);
                 vecmem::device_vector<const uint32_t> deviceSumBot(sumBotCompUptoMidView);
-                vecmem::device_vector<uint32_t> deviceBottomSPs(indBottomSPsView);
+                vecmem::device_vector<uint32_t> deviceIndBotSPs(indBottomSPsView);
                 if (idx < edgesBottom) {
                   auto mid = deviceIndMidBot[idx];
                   auto ind =
-                      deviceTmpIndBot[mid][idx - deviceSumBot[mid]];
-                  deviceBottomSPs.push_back(ind);
+                      deviceJvMidBot[mid][idx - deviceSumBot[mid]];
+                  deviceIndBotSPs.push_back(ind);
                 }
               });
         }).wait();
 
         q->submit([&](cl::sycl::handler& h) {
-          auto input_tmpIndTopView = vecmem::get_data(tmpIndTopView);
+          auto jvMidTopView = vecmem::get_data(jvMidTopData);
           h.parallel_for<ind_copy_top_kernel>(
               edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
                 vecmem::device_vector<const uint32_t> deviceIndMidTop(indMidTopCompView);
-                vecmem::jagged_device_vector<uint32_t> deviceTmpIndTop(input_tmpIndTopView);
+                vecmem::jagged_device_vector<uint32_t> deviceJvMidTop(jvMidTopView);
                 vecmem::device_vector<const uint32_t> deviceSumTop(sumTopCompUptoMidView);
-                vecmem::device_vector<uint32_t> deviceTopSPs(indTopSPsView);
+                vecmem::device_vector<uint32_t> deviceIndTopSPs(indTopSPsView);
                 if (idx < edgesTop) {
                   auto mid = deviceIndMidTop[idx];
                   auto ind =
-                        deviceTmpIndTop[mid][idx - deviceSumTop[mid]];
-                  deviceTopSPs.push_back(ind);  
+                        deviceJvMidTop[mid][idx - deviceSumTop[mid]];
+                  deviceIndTopSPs.push_back(ind);  
                   }
               });
         }).wait();
@@ -367,7 +363,7 @@ void createSeedsForGroupSycl(
       // coordinate transformation middle-bottom pairs
       auto linB = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Bottom> kernel(
-            inputMiddleSPs, inputBottomSPs, indMidBotCompView,
+            middleSPsView, bottomSPsView, indMidBotCompView,
             indBottomSPsView, edgesBottom, deviceLinBotView);
         h.parallel_for<class TransformCoordBottomKernel>(edgesBotNdRange,
                                                          kernel);
@@ -376,11 +372,10 @@ void createSeedsForGroupSycl(
       // coordinate transformation middle-top pairs
       auto linT = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Top> kernel(
-            inputMiddleSPs, inputTopSPs, indMidTopCompView,
+            middleSPsView, topSPsView, indMidTopCompView,
             indTopSPsView, edgesTop, deviceLinTopView);
         h.parallel_for<class TransformCoordTopKernel>(edgesTopNdRange, kernel);
       });
-
       //************************************************//
       // **** LINEAR EQUATION TRANSFORMATION - END **** //
       //************************************************//
@@ -518,15 +513,8 @@ void createSeedsForGroupSycl(
         sycl::buffer<uint32_t> countTripletsBuf(deviceCountTriplets.data(),
                                                 edgesBottom);
 
-        const uint32_t* deviceSumCombPtr = deviceSumComb.get();
-        const uint32_t* deviceSumBotPtr = sumBotCompUptoMid.data();
-        const uint32_t* deviceSumTopPtr = sumTopCompUptoMid.data();
-        const detail::DeviceLinEqCircle* deviceLinBotPtr = deviceLinBot.data();
-        const detail::DeviceLinEqCircle* deviceLinTopPtr = deviceLinTop.data();
-        const detail::DeviceSpacePoint* deviceMiddleSPsPtr =
-            middleSPs.data();
-        const uint32_t* deviceIndTopPtr = indTopSPs.data();
         detail::DeviceTriplet* deviceCurvImpactPtr = deviceCurvImpact.get();
+        auto sumBotTopCombView = vecmem::get_data(sumBotTopCombined);
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
           AtomicAccessor countTripletsAcc(countTripletsBuf, h);
@@ -534,6 +522,13 @@ void createSeedsForGroupSycl(
               sycl::access::mode::read, sycl::access::target::global_buffer>(h);
           h.parallel_for<triplet_search_kernel>(
               tripletSearchNDRange, [=](cl::sycl::nd_item<1> item) {
+                vecmem::device_vector<const uint32_t> deviceSumCombPtr(sumBotTopCombView);
+                vecmem::device_vector<const uint32_t> deviceSumBotPtr(sumBotCompUptoMidView);
+                vecmem::device_vector<const uint32_t> deviceSumTopPtr(sumTopCompUptoMidView);
+                vecmem::device_vector<detail::DeviceLinEqCircle> deviceLinBotPtr(deviceLinBotView);
+                vecmem::device_vector<detail::DeviceLinEqCircle> deviceLinTopPtr(deviceLinTopView);
+                vecmem::device_vector<const detail::DeviceSpacePoint> deviceMiddleSPsPtr(middleSPsView);
+                vecmem::device_vector<uint32_t> deviceIndTopPtr(indTopSPsView);
                 const uint32_t idx = item.get_global_linear_id();
                 if (idx < numTripletSearchThreads) {
                   // Retrieve the index of the corresponding middle
@@ -708,13 +703,8 @@ void createSeedsForGroupSycl(
         });
 
         {
-          const uint32_t* deviceMidIndPerBotPtr = indMidBotComp.data();
-          const uint32_t* deviceIndBotPtr = indBottomSPs.data();
           const detail::DeviceTriplet* deviceCurvImpactConstPtr =
               deviceCurvImpact.get();
-          const detail::DeviceSpacePoint* deviceBottomSPsPtr =
-              bottomSPs.data();
-          const detail::DeviceSpacePoint* deviceTopSPsPtr = topSPs.data();
           detail::SeedData* deviceSeedArrayPtr = deviceSeedArray.get();
           sycl::buffer<uint32_t> countSeedsBuf(&sumSeeds, 1);
           q->submit([&](cl::sycl::handler& h) {
@@ -729,6 +719,14 @@ void createSeedsForGroupSycl(
             h.parallel_for<filter_2sp_fixed_kernel>(
                 tripletFilterNDRange, [=](cl::sycl::nd_item<1> item) {
                   if (item.get_global_linear_id() < numTripletFilterThreads) {
+                    // Creating vecmem devices inside the kernel
+                    const vecmem::device_vector<uint32_t> deviceIndBotPtr(indBottomSPsView);
+                    const vecmem::device_vector<const detail::DeviceSpacePoint> deviceBottomSPsPtr(bottomSPsView);
+                    const vecmem::device_vector<const detail::DeviceSpacePoint> deviceTopSPsPtr(topSPsView);
+                    vecmem::device_vector<const uint32_t> deviceSumCombPtr(sumBotTopCombView);
+                    vecmem::device_vector<const uint32_t> deviceSumBotPtr(sumBotCompUptoMidView);
+                    vecmem::device_vector<const detail::DeviceSpacePoint> deviceMiddleSPsPtr(middleSPsView);
+                    const vecmem::device_vector<uint32_t> deviceMidIndPerBotPtr(indMidBotCompView);
                     const auto idx = deviceSumBotPtr[firstMiddle] +
                                      item.get_global_linear_id();
                     const auto mid = deviceMidIndPerBotPtr[idx];

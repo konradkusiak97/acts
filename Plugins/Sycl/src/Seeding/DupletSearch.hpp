@@ -20,6 +20,9 @@
 // VecMem includes
 #include "vecmem/containers/device_vector.hpp"
 #include "vecmem/containers/jagged_device_vector.hpp"
+#include "vecmem/containers/jagged_vector.hpp"
+#include "vecmem/containers/vector.hpp"
+
 
 // System include(s).
 #include <cstdint>
