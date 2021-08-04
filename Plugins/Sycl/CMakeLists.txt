@@ -40,7 +40,7 @@ target_include_directories(
 
 target_link_libraries(
   ActsPluginSycl
-  PUBLIC ActsCore vecmem::core)
+  PUBLIC ActsCore vecmem::core vecmem::sycl)
 
 acts_target_setup_sycl(ActsPluginSycl DEPENDENCY PRIVATE)
 
