@@ -34,6 +34,8 @@
 #include "vecmem/containers/jagged_device_vector.hpp"
 #include "vecmem/containers/jagged_vector.hpp"
 #include "vecmem/containers/vector.hpp"
+#include "vecmem/utils/sycl/copy.hpp"
+
 
 namespace Acts::Sycl {
 // Kernel classes in order of execution.
@@ -59,7 +61,6 @@ void createSeedsForGroupSycl(
   const uint32_t M = middleSPs.size();
   const uint32_t B = bottomSPs.size();
   const uint32_t T = topSPs.size();
-
   // Up to the Nth space point, the sum of compatible bottom/top space points.
   // We need these for indexing other vectors later in the algorithm.
   // These are prefix sum arrays, with a leading zero.
@@ -94,8 +95,9 @@ void createSeedsForGroupSycl(
   // compatible Bottom/Top SPs.
   vecmem::jagged_vector<uint32_t> jvMidBotSPs(resource);
   vecmem::jagged_vector<uint32_t> jvMidTopSPs(resource);
+
   // Initialize M outer vectors
-  jvMidBotSPs.resize(M);
+  /*jvMidBotSPs.resize(M);
   jvMidTopSPs.resize(M);
   // Initialize the inner vectors of size B
   for (uint32_t i = 0; i < M; ++i) {
@@ -104,7 +106,7 @@ void createSeedsForGroupSycl(
   // Initialize the inner vectors of size T
   for (uint32_t i = 0; i < M; ++i) {
       jvMidTopSPs[i].reserve(T);
-  }
+  }*/
 
   try {
     auto* q = wrappedQueue.getQueue();
@@ -129,10 +131,18 @@ void createSeedsForGroupSycl(
                                       sycl::ONEAPI::memory_order::relaxed,
                                       sycl::ONEAPI::memory_scope::device>;
   
+    // Getting the vector view/data from jagged vectors
+    const std::vector<std::size_t> jagged_size(M, 0);
+    const std::vector<std::size_t> jagged_capacityBot(M, B);
+    const std::vector<std::size_t> jagged_capacityTop(M, T);
 
-    // Making the first vecmem::get_data on the jagged vectors
-    auto jvMidBotData = vecmem::get_data(jvMidBotSPs);
-    auto jvMidTopData = vecmem::get_data(jvMidTopSPs);
+    // Creating the jagged vector buffers for the Duplet Search
+    vecmem::data::jagged_vector_buffer<uint32_t> bufMidBotSPs(jagged_size, jagged_capacityBot, *resource, resource);
+    vecmem::data::jagged_vector_buffer<uint32_t> bufMidTopSPs(jagged_size, jagged_capacityTop, *resource, resource);
+    // Helper object for creating memory copies
+    vecmem::sycl::copy copy(q);
+    copy.setup(bufMidBotSPs);
+    copy.setup(bufMidTopSPs);
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
     // We'll have a total of M*B threads globally, but we need to give the
@@ -151,16 +161,16 @@ void createSeedsForGroupSycl(
       // Perform the middle-bottom duplet search.
       q->submit([&](cl::sycl::handler& h) {
         detail::DupletSearch<detail::SpacePointType::Bottom>
-            kernel(middleSPsView, bottomSPsView, vecmem::get_data(jvMidBotData), seedfinderConfig);
+            kernel(middleSPsView, bottomSPsView, bufMidBotSPs, seedfinderConfig);
         h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                        kernel);
-      }).wait();
+      }).wait_and_throw();
       // Perform the middle-top duplet search.
       q->submit([&](cl::sycl::handler& h) {
         detail::DupletSearch<detail::SpacePointType::Top>
-            kernel(middleSPsView, topSPsView, vecmem::get_data(jvMidTopData), seedfinderConfig);
+            kernel(middleSPsView, topSPsView, bufMidTopSPs, seedfinderConfig);
         h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
-      }).wait();
+      }).wait_and_throw();
     }  // sync (buffers get destroyed and duplet counts are copied back to
        // countBotDuplets and countTopDuplets)
 
@@ -169,9 +179,13 @@ void createSeedsForGroupSycl(
     //*********************************************//
     {
       // Retrieve results from Duplet search
+      copy(bufMidBotSPs, jvMidBotSPs);
+      copy(bufMidTopSPs, jvMidTopSPs);
+
       for (uint32_t i = 0; i < M; ++i) {
         countBotDuplets[i] = jvMidBotSPs[i].size();
         countTopDuplets[i] = jvMidTopSPs[i].size();
+        std::cout << countBotDuplets[i];
       }
 
       // Construct prefix sum arrays of duplet counts.
@@ -311,6 +325,10 @@ void createSeedsForGroupSycl(
       indTopSPs.reserve(edgesTop);
       auto indBottomSPsView = vecmem::get_data(indBottomSPs);
       auto indTopSPsView = vecmem::get_data(indTopSPs);
+
+      auto jvMidBotData = vecmem::get_data(jvMidBotSPs);
+      auto jvMidTopData = vecmem::get_data(jvMidTopSPs);
+
       {
         q->submit([&](cl::sycl::handler& h) {
           auto jvMidBotView = vecmem::get_data(jvMidBotData);
@@ -319,7 +337,7 @@ void createSeedsForGroupSycl(
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
                 vecmem::device_vector<const uint32_t> deviceIndMidBot(indMidBotCompView);
-                vecmem::jagged_device_vector<uint32_t> deviceJvMidBot(jvMidBotView);
+                const vecmem::jagged_device_vector<const uint32_t> deviceJvMidBot(jvMidBotView);
                 vecmem::device_vector<const uint32_t> deviceSumBot(sumBotCompUptoMidView);
                 vecmem::device_vector<uint32_t> deviceIndBotSPs(indBottomSPsView);
                 if (idx < edgesBottom) {
@@ -329,7 +347,7 @@ void createSeedsForGroupSycl(
                   deviceIndBotSPs.push_back(ind);
                 }
               });
-        }).wait();
+        }).wait_and_throw();
 
         q->submit([&](cl::sycl::handler& h) {
           auto jvMidTopView = vecmem::get_data(jvMidTopData);
@@ -338,7 +356,7 @@ void createSeedsForGroupSycl(
                 auto idx = item.get_global_linear_id();
                 // Initialization of vecmem devices out of the views.
                 vecmem::device_vector<const uint32_t> deviceIndMidTop(indMidTopCompView);
-                vecmem::jagged_device_vector<uint32_t> deviceJvMidTop(jvMidTopView);
+                const vecmem::jagged_device_vector<const uint32_t> deviceJvMidTop(jvMidTopView);
                 vecmem::device_vector<const uint32_t> deviceSumTop(sumTopCompUptoMidView);
                 vecmem::device_vector<uint32_t> deviceIndTopSPs(indTopSPsView);
                 if (idx < edgesTop) {
@@ -348,7 +366,7 @@ void createSeedsForGroupSycl(
                   deviceIndTopSPs.push_back(ind);  
                   }
               });
-        }).wait();
+        }).wait_and_throw();
       }  // sync
 
       //************************************************//

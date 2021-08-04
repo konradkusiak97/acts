@@ -19,6 +19,7 @@
 
 // VecMem includes
 #include "vecmem/containers/device_vector.hpp"
+#include "vecmem/containers/data/jagged_vector_buffer.hpp"
 #include "vecmem/containers/jagged_device_vector.hpp"
 #include "vecmem/containers/jagged_vector.hpp"
 #include "vecmem/containers/vector.hpp"
@@ -41,9 +42,9 @@ class DupletSearch {
 
  public:
   /// Constructor with all the necessary arguments
-  DupletSearch(const vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
-               const vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
-               vecmem::data::jagged_vector_view<uint32_t>& middleOtherSPIndicesView,
+  DupletSearch(const vecmem::data::vector_view<const detail::DeviceSpacePoint> middleSPs,
+               const vecmem::data::vector_view<const detail::DeviceSpacePoint> otherSPs,
+               vecmem::data::jagged_vector_view<uint32_t> middleOtherSPIndicesView,
                const DeviceSeedfinderConfig& config)
       : m_nMiddleSPs(middleSPs.size()),
         m_middleSPs(middleSPs),
