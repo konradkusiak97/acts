@@ -94,7 +94,7 @@ class DupletSearch {
         (cl::sycl::abs(cotTheta) <= m_config.cotThetaMax) &&
         (zOrigin >= m_config.collisionRegionMin) &&
         (zOrigin <= m_config.collisionRegionMax)) {
-      middleOtherSPIndices.at(middleIndex).push_back(otherIndex);
+      middleOtherSPIndices[middleIndex].push_back(otherIndex);
     }
   }
 
