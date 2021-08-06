@@ -19,7 +19,6 @@
 
 // VecMem includes
 #include "vecmem/containers/device_vector.hpp"
-#include "vecmem/containers/data/jagged_vector_buffer.hpp"
 #include "vecmem/containers/jagged_device_vector.hpp"
 #include "vecmem/containers/jagged_vector.hpp"
 #include "vecmem/containers/vector.hpp"
@@ -95,7 +94,7 @@ class DupletSearch {
         (cl::sycl::abs(cotTheta) <= m_config.cotThetaMax) &&
         (zOrigin >= m_config.collisionRegionMin) &&
         (zOrigin <= m_config.collisionRegionMax)) {
-      middleOtherSPIndices[middleIndex].push_back(otherIndex);
+      middleOtherSPIndices.at(middleIndex).push_back(otherIndex);
     }
   }
 

@@ -41,11 +41,11 @@ class LinearTransform {
 
  public:
   /// Constructor with all the necessary arguments
-  LinearTransform(const vecmem::data::vector_view<const detail::DeviceSpacePoint>& middleSPs,
-                  const vecmem::data::vector_view<const detail::DeviceSpacePoint>& otherSPs,
-                  const vecmem::data::vector_view<u_int32_t>& middleIndexLUT,
-                  const vecmem::data::vector_view<u_int32_t>& otherIndexLUT, uint32_t nEdges,
-                  vecmem::data::vector_view<DeviceLinEqCircle>& resultArray)
+  LinearTransform(const vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
+                  const vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
+                  const vecmem::data::vector_view<u_int32_t> middleIndexLUT,
+                  const vecmem::data::vector_view<u_int32_t> otherIndexLUT, uint32_t nEdges,
+                  vecmem::data::vector_view<DeviceLinEqCircle> resultArray)
       : m_nMiddleSPs(middleSPs.size()),
         m_middleSPs(middleSPs),
         m_nOtherSPs(otherSPs.size()),
