@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -37,8 +37,8 @@ namespace Acts::Sycl {
 ///                      point structures of top space points
 /// @param[out] seeds holds of the generated seed indices and weight
 void createSeedsForGroupSycl(
-    vecmem::memory_resource* resource,
-    const QueueWrapper& wrappedQueue,
+    QueueWrapper wrappedQueue,
+    vecmem::memory_resource& resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,

@@ -18,7 +18,6 @@
 #include "Acts/Plugins/Sycl/Utilities/QueueWrapper.hpp"
 
 #include "vecmem/memory/memory_resource.hpp"
-#include "vecmem/containers/vector.hpp"
 
 namespace Acts::Sycl {
 
@@ -28,8 +27,8 @@ class Seedfinder {
   Seedfinder(
       Acts::SeedfinderConfig<external_spacepoint_t> config,
       const Acts::Sycl::DeviceExperimentCuts& cuts,
-      vecmem::memory_resource* resource,
-      Acts::Sycl::QueueWrapper wrappedQueue = Acts::Sycl::QueueWrapper());
+      Acts::Sycl::QueueWrapper wrappedQueue,
+      vecmem::memory_resource& resource);
 
   ~Seedfinder() = default;
   Seedfinder() = delete;

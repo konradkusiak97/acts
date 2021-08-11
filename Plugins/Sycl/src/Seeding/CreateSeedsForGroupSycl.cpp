@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -47,8 +47,8 @@ class triplet_search_kernel;
 class filter_2sp_fixed_kernel;
 
 void createSeedsForGroupSycl(
-    vecmem::memory_resource* resource,
-    const QueueWrapper& wrappedQueue,
+    QueueWrapper wrappedQueue,
+    vecmem::memory_resource& resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
@@ -66,9 +66,9 @@ void createSeedsForGroupSycl(
   // Up to the Nth space point, the sum of compatible bottom/top space points.
   // We need these for indexing other vectors later in the algorithm.
   // These are prefix sum arrays, with a leading zero.
-  vecmem::vector<uint32_t> sumBotCompUptoMid(resource);
-  vecmem::vector<uint32_t> sumTopCompUptoMid(resource);
-  vecmem::vector<uint32_t> sumBotTopCombined(resource);
+  vecmem::vector<uint32_t> sumBotCompUptoMid(&resource);
+  vecmem::vector<uint32_t> sumTopCompUptoMid(&resource);
+  vecmem::vector<uint32_t> sumBotTopCombined(&resource);
   // Initialize the vectors with zeros.
   sumBotCompUptoMid.assign(M + 1, 0);
   sumTopCompUptoMid.assign(M + 1, 0);
@@ -81,8 +81,8 @@ void createSeedsForGroupSycl(
   // After completing the duplet search, we'll have successfully contructed
   // two bipartite graphs for bottom-middle and top-middle space points.
   // We store the indices of the middle space points of the corresponding edges.
-  vecmem::vector<uint32_t> indMidBotComp(resource);
-  vecmem::vector<uint32_t> indMidTopComp(resource);
+  vecmem::vector<uint32_t> indMidBotComp;
+  vecmem::vector<uint32_t> indMidTopComp;
 
   // Number of edges for middle-bottom and middle-top duplet bipartite graphs.
   uint64_t edgesBottom = 0;
@@ -92,11 +92,6 @@ void createSeedsForGroupSycl(
   // per middle space point. (nb0*nt0 + nb1*nt1 + ... where nbk is the number
   // of comp. bot. SPs for the kth middle SP)
   uint64_t edgesComb = 0;
-
-  // Use VecMem jagged vectors for the "matrices" with middle SPs and their 
-  // compatible Bottom/Top SPs.
-  vecmem::jagged_vector<uint32_t> jvMidBotSPs(resource);
-  vecmem::jagged_vector<uint32_t> jvMidTopSPs(resource);
 
   // Initialize M outer vectors
   /*jvMidBotSPs.resize(M);
@@ -116,6 +111,9 @@ void createSeedsForGroupSycl(
         q->get_device().get_info<cl::sycl::info::device::global_mem_size>();
     uint64_t maxWorkGroupSize =
         q->get_device().get_info<cl::sycl::info::device::max_work_group_size>();
+    
+    // Helper object for creating memory copies
+    vecmem::sycl::copy copy(wrappedQueue.getQueue());
 
     // The limit of compatible bottom [top] space points per middle space
     // point is B [T]. Temporarily we reserve buffers of this size (M*B and
@@ -134,15 +132,13 @@ void createSeedsForGroupSycl(
     std::vector<std::size_t> jagged_capacityTop(M, T);
 
     // Creating the jagged vector buffers for the Duplet Search
-    vecmem::data::jagged_vector_buffer<uint32_t> bufMidBotSPs(jagged_size, 
-                                                              jagged_capacityBot, 
-                                                              *resource, resource);
-    vecmem::data::jagged_vector_buffer<uint32_t> bufMidTopSPs(jagged_size, 
-                                                              jagged_capacityTop, 
-                                                              *resource, resource);
-    // Helper object for creating memory copies
-    vecmem::sycl::copy copy(q);
-    copy.setup(bufMidBotSPs);
+    vecmem::data::jagged_vector_buffer<uint32_t> bufMidBotSPs(std::vector<std::size_t>(M,0), 
+                                                              std::vector<std::size_t>(M,B), 
+                                                              resource);
+    copy.setup(bufMidBotSPs);                                                              
+    vecmem::data::jagged_vector_buffer<uint32_t> bufMidTopSPs(std::vector<size_t>(M,0), 
+                                                              std::vector<size_t>(M,T), 
+                                                              resource);
     copy.setup(bufMidTopSPs);
 
     // Calculate 2 dimensional range of bottom-middle duplet search kernel
@@ -181,8 +177,10 @@ void createSeedsForGroupSycl(
     // *********** DUPLET SEARCH - END *********** //
     //*********************************************//
     {
-      // Retrieve results from Duplet search by copying them to the eralier created jagged vectors
+      // Retrieve results from Duplet search
+      vecmem::jagged_vector<uint32_t> jvMidBotSPs;
       copy(bufMidBotSPs, jvMidBotSPs);
+      vecmem::jagged_vector<uint32_t> jvMidTopSPs;
       copy(bufMidTopSPs, jvMidTopSPs);
 
       for (uint32_t i = 0; i < M; ++i) {
@@ -312,20 +310,19 @@ void createSeedsForGroupSycl(
 
       // Create a buffer to resize inside the kernel
       vecmem::data::vector_buffer<uint32_t> bufIndBottomSPs(edgesBottom,
-                                                            0,*resource);
+                                                            0,resource);
       vecmem::data::vector_buffer<uint32_t> bufIndTopSPs(edgesTop,
-                                                            0,*resource);
+                                                            0,resource);
       copy.setup(bufIndBottomSPs);
       copy.setup(bufIndTopSPs);
 
       // Create jagged vector_data and then vector_view to read from inside the kernel
-      auto jvMidBotData = vecmem::get_data(jvMidBotSPs);
-      auto jvMidTopData = vecmem::get_data(jvMidTopSPs);
-
+      auto jvMidBotView = vecmem::get_data(bufMidBotSPs);
+      auto jvMidTopView = vecmem::get_data(bufMidTopSPs);
+      auto bufIndBottomSPsView = vecmem::get_data(bufIndBottomSPs);
+      auto bufIndTopSPsView = vecmem::get_data(bufIndTopSPs);
       {
         q->submit([&](cl::sycl::handler& h) {
-          auto jvMidBotView = vecmem::get_data(jvMidBotData);
-          auto bufIndBottomSPsView = vecmem::get_data(bufIndBottomSPs);
           h.parallel_for<ind_copy_bottom_kernel>(
               edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
@@ -338,14 +335,12 @@ void createSeedsForGroupSycl(
                   auto mid = deviceIndMidBot[idx];
                   auto ind =
                       deviceJvMidBot[mid][idx - deviceSumBot[mid]];
-                  deviceIndBotSPs.push_back(ind);
+                  deviceIndBotSPs.at(idx) = ind;
                 }
               });
         }).wait_and_throw();
 
         q->submit([&](cl::sycl::handler& h) {
-          auto jvMidTopView = vecmem::get_data(jvMidTopData);
-          auto bufIndTopSPsView = vecmem::get_data(bufIndTopSPs);
           h.parallel_for<ind_copy_top_kernel>(
               edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
@@ -358,14 +353,14 @@ void createSeedsForGroupSycl(
                   auto mid = deviceIndMidTop[idx];
                   auto ind =
                         deviceJvMidTop[mid][idx - deviceSumTop[mid]];
-                  deviceIndTopSPs.push_back(ind);  
+                  deviceIndTopSPs.at(idx) = ind;  
                   }
               });
         }).wait_and_throw();
       }  // sync
       // Retrieve results from kernel operation and store them in the newly created vectors
-      vecmem::vector<uint32_t> indBottomSPs(resource);
-      vecmem::vector<uint32_t> indTopSPs(resource);
+      vecmem::vector<uint32_t> indBottomSPs;
+      vecmem::vector<uint32_t> indTopSPs;
       copy(bufIndBottomSPs, indBottomSPs);
       copy(bufIndTopSPs, indTopSPs);
 
@@ -374,9 +369,9 @@ void createSeedsForGroupSycl(
       //************************************************//
       // Buffers to pass to coordinate transform and obtain results
       vecmem::data::vector_buffer<detail::DeviceLinEqCircle> bufLinBot(edgesBottom, 
-                                                      0, *resource);
+                                                      0, resource);
       vecmem::data::vector_buffer<detail::DeviceLinEqCircle> bufLinTop(edgesTop, 
-                                                      0, *resource);
+                                                      0, resource);
       copy.setup(bufLinBot);
       copy.setup(bufLinTop);
       // transformation of circle equation (x,y) into linear equation (u,v)
@@ -403,8 +398,8 @@ void createSeedsForGroupSycl(
         h.parallel_for<class TransformCoordTopKernel>(edgesTopNdRange, kernel);
       });
       // Retrieve results from Linear Transform and store them in the newly created vectors
-      vecmem::vector<detail::DeviceLinEqCircle> deviceLinBot(resource);
-      vecmem::vector<detail::DeviceLinEqCircle> deviceLinTop(resource);
+      vecmem::vector<detail::DeviceLinEqCircle> deviceLinBot;
+      vecmem::vector<detail::DeviceLinEqCircle> deviceLinTop;
       copy(bufLinBot, deviceLinBot);
       copy(bufLinTop, deviceLinTop);
       //************************************************//
@@ -490,14 +485,14 @@ void createSeedsForGroupSycl(
                                                2));
 
       vecmem::data::vector_buffer<detail::DeviceTriplet> bufCurvImpact(maxMemoryAllocation, 
-                                                                              0, *resource);
+                                                                              0, resource);
       copy.setup(bufCurvImpact);
 
       // Reserve memory in advance for seed indices and weight
       // Other way around would allocating it inside the loop
       // -> less memory usage, but more frequent allocation and deallocation
       vecmem::data::vector_buffer<detail::SeedData> bufSeedArray(maxMemoryAllocation, 
-                                                                        0, *resource);
+                                                                        0, resource);
       copy.setup(bufSeedArray);
 
       // Counting the seeds in the second kernel allows us to copy back the
@@ -522,8 +517,8 @@ void createSeedsForGroupSycl(
       auto topSPsView = vecmem::get_data(topSPs);
 
       // Vectors for later retrieved results
-      vecmem::vector<detail::DeviceTriplet> curvImpact(resource);
-      vecmem::vector<detail::SeedData> seedArray(resource);
+      vecmem::vector<detail::DeviceTriplet> curvImpact;
+      vecmem::vector<detail::SeedData> seedArray;
 
       uint32_t lastMiddle = 0;
       for (uint32_t firstMiddle = 0; firstMiddle < M;

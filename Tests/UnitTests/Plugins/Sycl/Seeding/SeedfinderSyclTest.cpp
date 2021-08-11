@@ -128,9 +128,6 @@ auto setupSpacePointGridConfig(
 auto main(int argc, char** argv) -> int {
   auto start_prep = std::chrono::system_clock::now();
 
-  cl::sycl::queue queue{vecmem::sycl::device_selector()};
-  vecmem::sycl::shared_memory_resource resource(&queue);
-
   CommandLineArguments cmdlTool;
   cmdlTool.parse(argc, argv);
 
@@ -154,11 +151,13 @@ auto main(int argc, char** argv) -> int {
 
   const Acts::Logging::Level logLvl =
       cmdlTool.csvFormat ? Acts::Logging::WARNING : Acts::Logging::INFO;
+  Acts::Sycl::QueueWrapper
+      queue(cmdlTool.deviceName,
+            Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl));
+  vecmem::sycl::shared_memory_resource resource(queue.getQueue());
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
       config, deviceAtlasCuts,
-      &resource,
-      Acts::Sycl::QueueWrapper(
-          &queue));
+      queue, resource);
   Acts::Seedfinder<SpacePoint> normalSeedfinder(config);
   auto globalTool =
       [=](const SpacePoint& sp, float /*unused*/, float /*unused*/,

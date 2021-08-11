@@ -41,8 +41,8 @@ class DupletSearch {
 
  public:
   /// Constructor with all the necessary arguments
-  DupletSearch(const vecmem::data::vector_view<const detail::DeviceSpacePoint> middleSPs,
-               const vecmem::data::vector_view<const detail::DeviceSpacePoint> otherSPs,
+  DupletSearch(vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
+               vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
                vecmem::data::jagged_vector_view<uint32_t> middleOtherSPIndicesView,
                const DeviceSeedfinderConfig& config)
       : m_nMiddleSPs(middleSPs.size()),
@@ -61,14 +61,14 @@ class DupletSearch {
     // We check whether this thread actually makes sense (within bounds).
     // The number of threads is usually a factor of 2, or 3*2^k (k \in N), etc.
     // Without this check we may index out of arrays.
-    if ((middleIndex >= m_nMiddleSPs) || (otherIndex >= m_nOtherSPs)) {
+    if ((middleIndex >= m_middleSPs.size()) ||
+        (otherIndex >= m_otherSPs.size())) {
       return;
     }
 
     // Creating device vecmem vectors needed.
-    vecmem::device_vector<const detail::DeviceSpacePoint> device_middleSPs(m_middleSPs);
-    vecmem::device_vector<const detail::DeviceSpacePoint> device_otherSPs(m_otherSPs);
-    vecmem::jagged_device_vector<uint32_t> middleOtherSPIndices(m_middleOtherSPIndicesView);
+    const vecmem::device_vector<const detail::DeviceSpacePoint> device_middleSPs(m_middleSPs);
+    const vecmem::device_vector<const detail::DeviceSpacePoint> device_otherSPs(m_otherSPs);
 
     // Create a copy of the spacepoint objects for the current thread. On
     // dedicated GPUs this provides a better performance than accessing
@@ -94,7 +94,9 @@ class DupletSearch {
         (cl::sycl::abs(cotTheta) <= m_config.cotThetaMax) &&
         (zOrigin >= m_config.collisionRegionMin) &&
         (zOrigin <= m_config.collisionRegionMax)) {
-      middleOtherSPIndices[middleIndex].push_back(otherIndex);
+      vecmem::jagged_device_vector<uint32_t> 
+          middleOtherSPIndices(m_middleOtherSPIndicesView);
+      middleOtherSPIndices.at(middleIndex).push_back(otherIndex);
     }
   }
 
@@ -102,11 +104,11 @@ class DupletSearch {
   /// Total number of middle spacepoints
   uint32_t m_nMiddleSPs;
   /// VecMem vector view to the Middle space points
-  const vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPs;
+  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPs;
   /// Total number of "other" (bottom or top) spacepoints
   uint32_t m_nOtherSPs;
   /// VecMem vector view to the "other" (bottom or top) spacepoints (in global device mem.)
-  const vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
+  vecmem::data::vector_view<const detail::DeviceSpacePoint> m_otherSPs;
 
   /// The 2D array (jagged vector now) storing the compatible middle-other spacepoint indices
   vecmem::data::jagged_vector_view<uint32_t> m_middleOtherSPIndicesView;

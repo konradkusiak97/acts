@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -61,10 +61,10 @@ QueueWrapper::QueueWrapper(const QueueWrapper& other)
       m_ownsQueue(false),
       m_logger(getDefaultLogger("Sycl::QueueWrapper", Logging::INFO)) {}
 
-QueueWrapper::QueueWrapper(cl::sycl::queue* queue)
-    : m_queue(queue),
-      m_ownsQueue(false),
-      m_logger(getDefaultLogger("Sycl::QueueWrapper", Logging::INFO)) {}
+QueueWrapper::QueueWrapper(cl::sycl::queue& queue,
+                           std::unique_ptr<const Logger> incomingLogger)
+    : m_queue(&queue), m_ownsQueue(false),
+      m_logger(std::move(incomingLogger)) {}
 
 QueueWrapper::~QueueWrapper() {
   if (m_ownsQueue && (m_queue != nullptr)) {
@@ -105,8 +105,28 @@ QueueWrapper& QueueWrapper::operator=(const QueueWrapper& other) {
   return *this;
 }
 
-cl::sycl::queue* QueueWrapper::getQueue() const {
+const cl::sycl::queue* QueueWrapper::getQueue() const {
   return m_queue;
+}
+
+cl::sycl::queue* QueueWrapper::getQueue() {
+  return m_queue;
+}
+
+const cl::sycl::queue* QueueWrapper::operator->() const {
+  return m_queue;
+}
+
+cl::sycl::queue* QueueWrapper::operator->() {
+  return m_queue;
+}
+
+const cl::sycl::queue& QueueWrapper::operator*() const {
+  return *m_queue;
+}
+
+cl::sycl::queue& QueueWrapper::operator*() {
+  return *m_queue;
 }
 
 }  // namespace Acts::Sycl
