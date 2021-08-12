@@ -21,6 +21,10 @@
 #include <cassert>
 #include <cstdint>
 
+// VecMem include(s).
+#include "vecmem/containers/data/vector_view.hpp"
+#include "vecmem/containers/device_vector.hpp"
+
 namespace Acts::Sycl::detail {
 
 /// Functor performing a linear coordinate transformation on spacepoint pairs
@@ -35,19 +39,15 @@ class LinearTransform {
 
  public:
   /// Constructor with all the necessary arguments
-  LinearTransform(uint32_t nMiddleSPs,
-                  const device_array<DeviceSpacePoint>& middleSPs,
-                  uint32_t nOtherSPs,
-                  const device_array<DeviceSpacePoint>& otherSPs,
+  LinearTransform(vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
+                  vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
                   const device_array<uint32_t>& middleIndexLUT,
-                  const device_array<uint32_t>& otherIndexLUT, uint32_t nEdges,
+                  vecmem::data::vector_view<uint32_t> otherIndexLUT, uint32_t nEdges,
                   device_array<DeviceLinEqCircle>& resultArray)
-      : m_nMiddleSPs(nMiddleSPs),
-        m_middleSPs(middleSPs.get()),
-        m_nOtherSPs(nOtherSPs),
-        m_otherSPs(otherSPs.get()),
+      : m_middleSPs(middleSPs),
+        m_otherSPs(otherSPs),
         m_middleIndexLUT(middleIndexLUT.get()),
-        m_otherIndexLUT(otherIndexLUT.get()),
+        m_otherIndexLUT(otherIndexLUT),
         m_nEdges(nEdges),
         m_resultArray(resultArray.get()) {}
 
@@ -63,18 +63,23 @@ class LinearTransform {
     // Note that using asserts with the CUDA backend of dpc++ is not working
     // quite correctly at the moment. :-( So these checks may need to be
     // disabled if you need to build for an NVidia backend in Debug mode.
+
     const uint32_t middleIndex = m_middleIndexLUT[idx];
-    assert(middleIndex < m_nMiddleSPs);
-    (void)m_nMiddleSPs;
-    const uint32_t otherIndex = m_otherIndexLUT[idx];
-    assert(otherIndex < m_nOtherSPs);
-    (void)m_nOtherSPs;
+    assert(middleIndex < m_middleSPs.size());
+    (void)m_middleSPs.size();
+    vecmem::device_vector<uint32_t> 
+                  otherIndexLUT(m_otherIndexLUT);
+    const uint32_t otherIndex = otherIndexLUT[idx];
+    assert(otherIndex < m_otherSPs.size());
+    (void)m_otherSPs.size();
 
     // Create a copy of the spacepoint objects for the current thread. On
     // dedicated GPUs this provides a better performance than accessing
     // variables one-by-one from global device memory.
-    const DeviceSpacePoint middleSP = m_middleSPs[middleIndex];
-    const DeviceSpacePoint otherSP = m_otherSPs[otherIndex];
+    const vecmem::device_vector<const DeviceSpacePoint> middleSPs(m_middleSPs);
+    const DeviceSpacePoint middleSP = middleSPs[middleIndex];
+    const vecmem::device_vector<const DeviceSpacePoint> otherSPs(m_otherSPs);
+    const DeviceSpacePoint otherSP = otherSPs[otherIndex];
 
     // Calculate some "helper variables" for the coordinate linear
     // transformation.
@@ -110,19 +115,15 @@ class LinearTransform {
   }
 
  private:
-  /// Total number of middle spacepoints
-  uint32_t m_nMiddleSPs;
   /// Pointer to the middle spacepoints (in global device memory)
-  const DeviceSpacePoint* m_middleSPs;
-  /// Total number of "other" (bottom or top) spacepoints
-  uint32_t m_nOtherSPs;
+  vecmem::data::vector_view<const DeviceSpacePoint> m_middleSPs;
   /// Pointer to the "other" (bottom or top) spacepoints (in global device mem.)
-  const DeviceSpacePoint* m_otherSPs;
+  vecmem::data::vector_view<const DeviceSpacePoint> m_otherSPs;
 
   /// Look-Up Table from the iteration index to the middle spacepoint index
   const uint32_t* m_middleIndexLUT;
   /// Loop-Up Table from the iteration index to the "other" spacepoint index
-  const uint32_t* m_otherIndexLUT;
+  vecmem::data::vector_view<uint32_t> m_otherIndexLUT;
 
   /// Total number of elements in the result array
   uint32_t m_nEdges;
