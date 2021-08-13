@@ -41,12 +41,12 @@ class LinearTransform {
   /// Constructor with all the necessary arguments
   LinearTransform(vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
                   vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
-                  const device_array<uint32_t>& middleIndexLUT,
+                  vecmem::data::vector_view<uint32_t> middleIndexLUT,
                   vecmem::data::vector_view<uint32_t> otherIndexLUT, uint32_t nEdges,
                   vecmem::data::vector_view<detail::DeviceLinEqCircle> resultArray)
       : m_middleSPs(middleSPs),
         m_otherSPs(otherSPs),
-        m_middleIndexLUT(middleIndexLUT.get()),
+        m_middleIndexLUT(middleIndexLUT),
         m_otherIndexLUT(otherIndexLUT),
         m_nEdges(nEdges),
         m_resultArray(resultArray) {}
@@ -63,8 +63,9 @@ class LinearTransform {
     // Note that using asserts with the CUDA backend of dpc++ is not working
     // quite correctly at the moment. :-( So these checks may need to be
     // disabled if you need to build for an NVidia backend in Debug mode.
-
-    const uint32_t middleIndex = m_middleIndexLUT[idx];
+    vecmem::device_vector<uint32_t> 
+                   middleIndexLUT(m_middleIndexLUT);
+    const uint32_t middleIndex = middleIndexLUT[idx];
     assert(middleIndex < m_middleSPs.size());
     (void)m_middleSPs.size();
     vecmem::device_vector<uint32_t> 
@@ -123,7 +124,7 @@ class LinearTransform {
   vecmem::data::vector_view<const DeviceSpacePoint> m_otherSPs;
 
   /// Look-Up Table from the iteration index to the middle spacepoint index
-  const uint32_t* m_middleIndexLUT;
+  vecmem::data::vector_view<uint32_t> m_middleIndexLUT;
   /// Loop-Up Table from the iteration index to the "other" spacepoint index
   vecmem::data::vector_view<uint32_t> m_otherIndexLUT;
 
