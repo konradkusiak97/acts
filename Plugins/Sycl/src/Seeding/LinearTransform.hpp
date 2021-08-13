@@ -43,13 +43,13 @@ class LinearTransform {
                   vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
                   const device_array<uint32_t>& middleIndexLUT,
                   vecmem::data::vector_view<uint32_t> otherIndexLUT, uint32_t nEdges,
-                  device_array<DeviceLinEqCircle>& resultArray)
+                  vecmem::data::vector_view<detail::DeviceLinEqCircle> resultArray)
       : m_middleSPs(middleSPs),
         m_otherSPs(otherSPs),
         m_middleIndexLUT(middleIndexLUT.get()),
         m_otherIndexLUT(otherIndexLUT),
         m_nEdges(nEdges),
-        m_resultArray(resultArray.get()) {}
+        m_resultArray(resultArray) {}
 
   /// Operator performing the coordinate linear transformation
   void operator()(cl::sycl::nd_item<1> item) const {
@@ -110,7 +110,9 @@ class LinearTransform {
         iDeltaR2;
 
     // Store the result object in device global memory.
-    m_resultArray[idx] = result;
+    vecmem::device_vector<detail::DeviceLinEqCircle>
+                          resultArray(m_resultArray);
+    resultArray[idx] = result;
     return;
   }
 
@@ -129,7 +131,7 @@ class LinearTransform {
   uint32_t m_nEdges;
 
   /// The result array in device global memory
-  DeviceLinEqCircle* m_resultArray;
+  vecmem::data::vector_view<detail::DeviceLinEqCircle> m_resultArray;
 
 };  // class LinearTransform
 

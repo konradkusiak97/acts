@@ -271,8 +271,6 @@ void createSeedsForGroupSycl(
       // We store the indices of the BOTTOM/TOP space points of the edges of
       // the bottom-middle and top-middle bipartite duplet graphs. They index
       // the bottomSPs and topSPs vectors.
-      auto deviceIndBot = make_device_array<uint32_t>(edgesBottom, *q);
-      auto deviceIndTop = make_device_array<uint32_t>(edgesTop, *q);
 
       // We store the indices of the MIDDLE space points of the edges of the
       // bottom-middle and top-middle bipartite duplet graphs.
@@ -289,10 +287,6 @@ void createSeedsForGroupSycl(
       auto deviceSumComb = make_device_array<uint32_t>(M + 1, *q);
 
       // Allocations for coordinate transformation.
-      auto deviceLinBot =
-          make_device_array<detail::DeviceLinEqCircle>(edgesBottom, *q);
-      auto deviceLinTop =
-          make_device_array<detail::DeviceLinEqCircle>(edgesTop, *q);
 
       q->memcpy(deviceMidIndPerBot.get(), indMidBotComp.data(),
                 sizeof(uint32_t) * edgesBottom);
@@ -321,7 +315,6 @@ void createSeedsForGroupSycl(
         auto midBotDupletView = vecmem::get_data(midBotDupletBuffer);
         const uint32_t* deviceSumBotPtr = deviceSumBot.get();
         auto indBotDupletView = vecmem::get_data(indBotDupletBuffer);
-        uint32_t* deviceIndBotPtr = deviceIndBot.get();
         q->submit([&](cl::sycl::handler& h) {
           h.parallel_for<ind_copy_bottom_kernel>(
               edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
@@ -334,7 +327,6 @@ void createSeedsForGroupSycl(
                   vecmem::device_vector<u_int32_t>
                         indBotDuplets(indBotDupletView);
                   indBotDuplets[idx] = ind;
-                  deviceIndBotPtr[idx] = ind;
                 }
               });
         });
@@ -343,7 +335,6 @@ void createSeedsForGroupSycl(
         auto midTopDupletView = vecmem::get_data(midTopDupletBuffer);
         const uint32_t* deviceSumTopPtr = deviceSumTop.get();
         auto indTopDupletView = vecmem::get_data(indTopDupletBuffer);
-        uint32_t* deviceIndTopPtr = deviceIndTop.get();
         q->submit([&](cl::sycl::handler& h) {
           h.parallel_for<ind_copy_top_kernel>(
               edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
@@ -356,7 +347,6 @@ void createSeedsForGroupSycl(
                   vecmem::device_vector<uint32_t> 
                       indTopDuplets(indTopDupletView);
                   indTopDuplets[idx] = ind;
-                  deviceIndTopPtr[idx] = ind;
                 }
               });
         });
@@ -367,6 +357,16 @@ void createSeedsForGroupSycl(
       copy(indBotDupletBuffer, indBotDuplets);
       vecmem::vector<uint32_t> indTopDuplets;
       copy(indTopDupletBuffer, indTopDuplets);
+
+      // Create the output data of the linear transform
+      vecmem::data::vector_buffer
+          <detail::DeviceLinEqCircle>
+              linearBotBuffer(edgesBottom, resource);
+      copy.setup(linearBotBuffer);
+      vecmem::data::vector_buffer
+          <detail::DeviceLinEqCircle>
+              linearTopBuffer(edgesTop, resource);
+      copy.setup(linearTopBuffer);
       //************************************************//
       // *** LINEAR EQUATION TRANSFORMATION - BEGIN *** //
       //************************************************//
@@ -380,7 +380,7 @@ void createSeedsForGroupSycl(
       auto linB = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Bottom> kernel(
             vecmem::get_data(middleSPs), vecmem::get_data(bottomSPs), deviceMidIndPerBot,
-            indBotDupletBuffer, edgesBottom, deviceLinBot);
+            indBotDupletBuffer, edgesBottom, linearBotBuffer);
         h.parallel_for<class TransformCoordBottomKernel>(edgesBotNdRange,
                                                          kernel);
       });
@@ -389,9 +389,16 @@ void createSeedsForGroupSycl(
       auto linT = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Top> kernel(
             vecmem::get_data(middleSPs), vecmem::get_data(topSPs), deviceMidIndPerTop,
-            indTopDupletBuffer, edgesTop, deviceLinTop);
+            indTopDupletBuffer, edgesTop, linearTopBuffer);
         h.parallel_for<class TransformCoordTopKernel>(edgesTopNdRange, kernel);
       });
+      // Retrieve results from linear transform
+      vecmem::vector<detail::DeviceLinEqCircle> 
+                                  linearBotDuplets;
+      copy(linearBotBuffer, linearBotDuplets);
+      vecmem::vector<detail::DeviceLinEqCircle>
+                                  linearTopDuplets;
+      copy(linearTopBuffer, linearTopDuplets);
 
       //************************************************//
       // **** LINEAR EQUATION TRANSFORMATION - END **** //
@@ -532,13 +539,12 @@ void createSeedsForGroupSycl(
         const uint32_t* deviceSumCombPtr = deviceSumComb.get();
         const uint32_t* deviceSumBotPtr = deviceSumBot.get();
         const uint32_t* deviceSumTopPtr = deviceSumTop.get();
-        const detail::DeviceLinEqCircle* deviceLinBotPtr = deviceLinBot.get();
-        const detail::DeviceLinEqCircle* deviceLinTopPtr = deviceLinTop.get();
+        auto linearBotView = vecmem::get_data(linearBotBuffer);
+        auto linearTopView = vecmem::get_data(linearTopBuffer);
         const detail::DeviceSpacePoint* deviceMiddleSPsPtr =
             deviceMiddleSPs.get();
         detail::DeviceTriplet* deviceCurvImpactPtr = deviceCurvImpact.get();
-        // auto indTopDupletView = vecmem::get_data(indTopDupletBuffer);
-        const uint32_t* deviceIndTopPtr = deviceIndTop.get();
+        auto indTopDupletView = vecmem::get_data(indTopDupletBuffer);
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
           AtomicAccessor countTripletsAcc(countTripletsBuf, h);
@@ -617,9 +623,12 @@ void createSeedsForGroupSycl(
                       deviceSumBotPtr[mid] + (threadIdxForMiddleSP / numT);
                   const auto it =
                       deviceSumTopPtr[mid] + (threadIdxForMiddleSP % numT);
-
-                  const auto linBotEq = deviceLinBotPtr[ib];
-                  const auto linTopEq = deviceLinTopPtr[it];
+                  vecmem::device_vector<detail::DeviceLinEqCircle>
+                                            deviceLinBot(linearBotView);
+                  const auto linBotEq = deviceLinBot[ib];
+                  vecmem::device_vector<detail::DeviceLinEqCircle>
+                                            deviceLinTop(linearTopView);
+                  const auto linTopEq = deviceLinTop[it];
                   const auto midSP = deviceMiddleSPsPtr[mid];
 
                   const auto Vb = linBotEq.v;
@@ -676,9 +685,9 @@ void createSeedsForGroupSycl(
                            p2scatter * seedfinderConfig.sigmaScattering *
                                seedfinderConfig.sigmaScattering)) &&
                         !(Im > seedfinderConfig.impactMax)) {
-                      //vecmem::device_vector<uint32_t> 
-                            //deviceIndTopDuplets(indTopDupletView);
-                      const auto top = deviceIndTopPtr[it];
+                      vecmem::device_vector<uint32_t> 
+                            deviceIndTopDuplets(indTopDupletView);
+                      const auto top = deviceIndTopDuplets[it];
                       // this will be the t-th top space point for
                       // fixed middle and bottom SP
                       auto t = countTripletsAcc[ib].fetch_add(1);
@@ -728,8 +737,7 @@ void createSeedsForGroupSycl(
               deviceBottomSPs.get();
           const detail::DeviceSpacePoint* deviceTopSPsPtr = deviceTopSPs.get();
           detail::SeedData* deviceSeedArrayPtr = deviceSeedArray.get();
-          // auto indBotDupletView = vecmem::get_data(indBotDupletBuffer);
-          const uint32_t* deviceIndBotPtr = deviceIndBot.get();
+          auto indBotDupletView = vecmem::get_data(indBotDupletBuffer);
           sycl::buffer<uint32_t> countSeedsBuf(&sumSeeds, 1);
           q->submit([&](cl::sycl::handler& h) {
             h.depends_on(tripletKernel);
@@ -746,9 +754,9 @@ void createSeedsForGroupSycl(
                     const auto idx = deviceSumBotPtr[firstMiddle] +
                                      item.get_global_linear_id();
                     const auto mid = deviceMidIndPerBotPtr[idx];
-                    //vecmem::device_vector<uint32_t>
-                        //deviceIndBotDuplets(indBotDupletView);
-                    const auto bot = deviceIndBotPtr[idx];
+                    vecmem::device_vector<uint32_t>
+                        deviceIndBotDuplets(indBotDupletView);
+                    const auto bot = deviceIndBotDuplets[idx];
 
                     const auto tripletBegin =
                         deviceSumCombPtr[mid] - sumCombUptoFirstMiddle +
