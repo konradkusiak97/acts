@@ -93,10 +93,6 @@ void createSeedsForGroupSycl(
     cl::sycl::nd_range<2> topDupletNDRange =
         calculate2DimNDRange(M, T, maxWorkGroupSize);
 
-    // Count compatible bottom/top space points per middle space point.
-    std::vector<uint32_t> countBotDuplets(M, 0);
-    std::vector<uint32_t> countTopDuplets(M, 0);
-
     //*********************************************//
     // ********** DUPLET SEARCH - BEGIN ********** //
     //*********************************************//
@@ -174,10 +170,8 @@ void createSeedsForGroupSycl(
 
     // Fill arrays of middle SP indices of found duplets (bottom and top).
     for (uint32_t mid = 0; mid < M; ++mid) {
-      countBotDuplets.at(mid) = midBotDuplets[mid].size();
       std::fill_n(std::back_inserter(indMidBotComp), midBotDuplets[mid].size(),
                   mid);
-      countTopDuplets.at(mid) = midTopDuplets[mid].size();
       std::fill_n(std::back_inserter(indMidTopComp), midTopDuplets[mid].size(),
                   mid);
     }
@@ -257,8 +251,6 @@ void createSeedsForGroupSycl(
         (deviceLinBot) is also edgesBottom, the sum of bottom duplets we
         found so far.
       */
-
-      sycl::buffer<uint32_t> numTopDupletsBuf(countTopDuplets.data(), M);
 
       // We store the indices of the BOTTOM/TOP space points of the edges of
       // the bottom-middle and top-middle bipartite duplet graphs. They index
@@ -527,11 +519,10 @@ void createSeedsForGroupSycl(
         const auto middleSPsView = vecmem::get_data(middleSPs);
         auto curvImpactView = vecmem::get_data(curvImpactBuffer);
         auto indTopDupletView = vecmem::get_data(indTopDuplets);
+        auto midTopDupletView = vecmem::get_data(midTopDupletBuffer);
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
           AtomicAccessor countTripletsAcc(countTripletsBuf, h);
-          auto numTopDupletsAcc = numTopDupletsBuf.get_access<
-              sycl::access::mode::read, sycl::access::target::global_buffer>(h);
           h.parallel_for<triplet_search_kernel>(
               tripletSearchNDRange, [=](cl::sycl::nd_item<1> item) {
                 const uint32_t idx = item.get_global_linear_id();
@@ -554,8 +545,9 @@ void createSeedsForGroupSycl(
                     }
                   }
                   mid = L;
-
-                  const auto numT = numTopDupletsAcc[mid];
+                  vecmem::jagged_device_vector<uint32_t>
+                            midTopDuplets(midTopDupletView);
+                  const auto numT = midTopDuplets.at(mid).size();
                   const auto threadIdxForMiddleSP =
                       (idx - sumBotTopCombPrefix[mid] + sumCombUptoFirstMiddle);
 
@@ -735,9 +727,6 @@ void createSeedsForGroupSycl(
             auto countTripletsAcc = countTripletsBuf.get_access<
                 sycl::access::mode::read, sycl::access::target::global_buffer>(
                 h);
-            auto numTopDupletsAcc = numTopDupletsBuf.get_access<
-                sycl::access::mode::read, sycl::access::target::global_buffer>(
-                h);
             h.parallel_for<filter_2sp_fixed_kernel>(
                 tripletFilterNDRange, [=](cl::sycl::nd_item<1> item) {
                   if (item.get_global_linear_id() < numTripletFilterThreads) {
@@ -753,9 +742,11 @@ void createSeedsForGroupSycl(
                     const auto bot = deviceIndBotDuplets[idx];
                     vecmem::device_vector<uint32_t>
                         sumBotTopCombPrefix(sumBotTopCombView);
+                    vecmem::jagged_device_vector<uint32_t>
+                        midTopDuplets(midTopDupletView);
                     const auto tripletBegin =
                         sumBotTopCombPrefix[mid] - sumCombUptoFirstMiddle +
-                        (idx - sumBotMidPrefix[mid]) * numTopDupletsAcc[mid];
+                        (idx - sumBotMidPrefix[mid]) * midTopDuplets.at(mid).size();
                     const auto tripletEnd =
                         tripletBegin + countTripletsAcc[idx];
                     const vecmem::device_vector
