@@ -14,11 +14,13 @@
 // VecMem include(s).
 #include "vecmem/containers/vector.hpp"
 #include "vecmem/memory/memory_resource.hpp"
+#include "vecmem/containers/jagged_vector.hpp"
 
 // SYCL plugin include(s)
 #include "Acts/Plugins/Sycl/Seeding/DeviceExperimentCuts.hpp"
 #include "Acts/Plugins/Sycl/Seeding/detail/Types.hpp"
 #include "Acts/Plugins/Sycl/Utilities/QueueWrapper.hpp"
+
 
 namespace Acts::Sycl {
 
@@ -44,5 +46,5 @@ void createSeedsForGroupSycl(
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
-    std::vector<std::vector<detail::SeedData>>& seeds);
+    vecmem::jagged_vector<detail::SeedData>& seeds);
 }  // namespace Acts::Sycl

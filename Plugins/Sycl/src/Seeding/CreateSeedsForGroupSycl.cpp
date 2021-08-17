@@ -48,7 +48,7 @@ void createSeedsForGroupSycl(
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
-    std::vector<std::vector<detail::SeedData>>& seeds) {
+    vecmem::jagged_vector<detail::SeedData>& seeds) {
   // Each vector stores data of space points in simplified
   // structures of float variables
   // M: number of middle space points

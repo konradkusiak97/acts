@@ -114,7 +114,8 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
                             SP->varianceR(), SP->varianceZ()});
   }
 
-  std::vector<std::vector<detail::SeedData>> seeds;
+  //std::vector<std::vector<detail::SeedData>> seeds;
+  vecmem::jagged_vector<detail::SeedData> seeds;
 
   // Call the SYCL seeding algorithm
   createSeedsForGroupSycl(m_wrappedQueue, *m_resource, m_deviceConfig,
