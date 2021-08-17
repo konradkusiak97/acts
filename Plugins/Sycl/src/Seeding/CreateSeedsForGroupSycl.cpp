@@ -109,53 +109,56 @@ void createSeedsForGroupSycl(
                            resource);
     copy.setup(midTopDupletBuffer);
 
+    // Count compatible bottom/top space points per middle space point.
+    std::vector<uint32_t> countBotDuplets(M, 0);
+    std::vector<uint32_t> countTopDuplets(M, 0);
+
     // Atomic accessor type used throughout the code.
     using AtomicAccessor =
         sycl::ONEAPI::atomic_accessor<uint32_t, 1,
                                       sycl::ONEAPI::memory_order::relaxed,
                                       sycl::ONEAPI::memory_scope::device>;
+  {
+    // Allocate temporary buffers on top of the count arrays booked in USM.
+    sycl::buffer<uint32_t> countBotBuf(countBotDuplets.data(), M);
+    sycl::buffer<uint32_t> countTopBuf(countTopDuplets.data(), M);
 
     // Perform the middle-bottom duplet search.
     q->submit([&](cl::sycl::handler& h) {
-      detail::DupletSearch<detail::SpacePointType::Bottom>
+      AtomicAccessor countBotDupletsAcc(countBotBuf, h);
+      detail::DupletSearch<detail::SpacePointType::Bottom, AtomicAccessor>
           kernel(vecmem::get_data(middleSPs), vecmem::get_data(bottomSPs),
-                 midBotDupletBuffer, seedfinderConfig);
+                 midBotDupletBuffer, countBotDupletsAcc, seedfinderConfig);
       h.parallel_for<class DupletSearchBottomKernel>(bottomDupletNDRange,
                                                      kernel);
-    }).wait_and_throw();
+    });
 
     // Perform the middle-top duplet search.
     q->submit([&](cl::sycl::handler& h) {
-      detail::DupletSearch<detail::SpacePointType::Top>
+      AtomicAccessor countTopDupletsAcc(countTopBuf, h);
+      detail::DupletSearch<detail::SpacePointType::Top, AtomicAccessor>
           kernel(vecmem::get_data(middleSPs), vecmem::get_data(topSPs),
-                 midTopDupletBuffer, seedfinderConfig);
+                 midTopDupletBuffer, countTopDupletsAcc, seedfinderConfig);
       h.parallel_for<class DupletSearchTopKernel>(topDupletNDRange, kernel);
-    }).wait_and_throw();
-
+    });
+  }
     //*********************************************//
     // *********** DUPLET SEARCH - END *********** //
     //*********************************************//
-
-    // retrieve results from counting duplets
-    vecmem::jagged_vector<uint32_t> midBotDuplets;
-    copy(midBotDupletBuffer, midBotDuplets);
-    vecmem::jagged_vector<uint32_t> midTopDuplets;
-    copy(midTopDupletBuffer, midTopDuplets);
 
     // Construct prefix sum arrays of duplet counts.
     // These will later be used to index other arrays based on middle SP
     // indices.
     for (uint32_t i = 1; i < M + 1; ++i) {
       sumBotMidPrefix.push_back(
-          sumBotMidPrefix.at(i - 1) + midBotDuplets[i - 1].size());
+          sumBotMidPrefix.at(i - 1) + countBotDuplets[i - 1]);
       sumTopMidPrefix.push_back(
-          sumTopMidPrefix.at(i - 1) + midTopDuplets[i - 1].size());
+          sumTopMidPrefix.at(i - 1) + countTopDuplets[i - 1]);
       sumBotTopCombPrefix.push_back(
           sumBotTopCombPrefix.at(i - 1) +
-          midBotDuplets[i - 1].size() *
-          midTopDuplets[i - 1].size());
+          countBotDuplets[i - 1] *
+          countTopDuplets[i - 1]);
     }
-
     // Number of edges for middle-bottom and middle-top duplet bipartite graphs.
     const uint64_t edgesBottom = sumBotMidPrefix[M];
     const uint64_t edgesTop = sumTopMidPrefix[M];
@@ -170,9 +173,9 @@ void createSeedsForGroupSycl(
 
     // Fill arrays of middle SP indices of found duplets (bottom and top).
     for (uint32_t mid = 0; mid < M; ++mid) {
-      std::fill_n(std::back_inserter(indMidBotComp), midBotDuplets[mid].size(),
+      std::fill_n(std::back_inserter(indMidBotComp), countBotDuplets[mid],
                   mid);
-      std::fill_n(std::back_inserter(indMidTopComp), midTopDuplets[mid].size(),
+      std::fill_n(std::back_inserter(indMidTopComp), countTopDuplets[mid],
                   mid);
     }
 
@@ -323,11 +326,6 @@ void createSeedsForGroupSycl(
         });
 
       }  // sync
-      // Retrieve results from kernels
-      vecmem::vector<uint32_t> indBotDuplets(&resource);
-      copy(indBotDupletBuffer, indBotDuplets);
-      vecmem::vector<uint32_t> indTopDuplets(&resource);
-      copy(indTopDupletBuffer, indTopDuplets);
 
       // Create the output data of the linear transform
       vecmem::data::vector_buffer
@@ -351,7 +349,7 @@ void createSeedsForGroupSycl(
       auto linB = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Bottom> kernel(
             vecmem::get_data(middleSPs), vecmem::get_data(bottomSPs),
-            vecmem::get_data(indMidBotComp), vecmem::get_data(indBotDuplets), 
+            vecmem::get_data(indMidBotComp), indBotDupletBuffer, 
             edgesBottom, linearBotBuffer);
         h.parallel_for<class TransformCoordBottomKernel>(edgesBotNdRange,
                                                          kernel);
@@ -361,17 +359,10 @@ void createSeedsForGroupSycl(
       auto linT = q->submit([&](cl::sycl::handler& h) {
         detail::LinearTransform<detail::SpacePointType::Top> kernel(
             vecmem::get_data(middleSPs), vecmem::get_data(topSPs), 
-            vecmem::get_data(indMidTopComp), vecmem::get_data(indTopDuplets), 
+            vecmem::get_data(indMidTopComp), indTopDupletBuffer, 
             edgesTop, linearTopBuffer);
         h.parallel_for<class TransformCoordTopKernel>(edgesTopNdRange, kernel);
       });
-      // Retrieve results from linear transform
-      vecmem::vector<detail::DeviceLinEqCircle> 
-                                  linearBotDuplets;
-      copy(linearBotBuffer, linearBotDuplets);
-      vecmem::vector<detail::DeviceLinEqCircle>
-                                  linearTopDuplets;
-      copy(linearTopBuffer, linearTopDuplets);
 
       //************************************************//
       // **** LINEAR EQUATION TRANSFORMATION - END **** //
@@ -518,7 +509,7 @@ void createSeedsForGroupSycl(
         auto linearTopView = vecmem::get_data(linearTopBuffer);
         const auto middleSPsView = vecmem::get_data(middleSPs);
         auto curvImpactView = vecmem::get_data(curvImpactBuffer);
-        auto indTopDupletView = vecmem::get_data(indTopDuplets);
+        auto indTopDupletView = vecmem::get_data(indTopDupletBuffer);
         auto midTopDupletView = vecmem::get_data(midTopDupletBuffer);
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
@@ -719,7 +710,7 @@ void createSeedsForGroupSycl(
           const auto bottomSPsView = vecmem::get_data(bottomSPs);
           const auto topSPsView = vecmem::get_data(topSPs);
           auto seedArrayView = vecmem::get_data(seedArrayBuffer);
-          auto indBotDupletView = vecmem::get_data(indBotDuplets);
+          auto indBotDupletView = vecmem::get_data(indBotDupletBuffer);
           sycl::buffer<uint32_t> countSeedsBuf(&sumSeeds, 1);
           q->submit([&](cl::sycl::handler& h) {
             h.depends_on(tripletKernel);

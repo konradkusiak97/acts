@@ -29,7 +29,7 @@
 namespace Acts::Sycl::detail {
 
 /// Functor taking care of finding viable spacepoint duplets
-template <SpacePointType OtherSPType>
+template <SpacePointType OtherSPType, class AtomicAccessorType>
 class DupletSearch {
   // Sanity check(s).
   static_assert((OtherSPType == SpacePointType::Bottom) ||
@@ -43,10 +43,12 @@ class DupletSearch {
   DupletSearch(vecmem::data::vector_view<const DeviceSpacePoint> middleSPs,
                vecmem::data::vector_view<const DeviceSpacePoint> otherSPs,
                vecmem::data::jagged_vector_view<uint32_t> middleOtherSPIndices,
+               const AtomicAccessorType& countOtherMid,
                const DeviceSeedfinderConfig& config)
       : m_middleSPs(middleSPs),
         m_otherSPs(otherSPs),
         m_middleOtherSPIndices(middleOtherSPIndices),
+        m_countOtherMid(countOtherMid),
         m_config(config) {}
 
   /// Operator performing the duplet search
@@ -93,6 +95,7 @@ class DupletSearch {
       vecmem::jagged_device_vector<uint32_t>
           middleOtherSPIndices(m_middleOtherSPIndices);
       middleOtherSPIndices.at(middleIndex).push_back(otherIndex);
+      m_countOtherMid[middleIndex].fetch_add(1);
     }
   }
 
@@ -104,6 +107,9 @@ class DupletSearch {
 
   /// The 2D array storing the compatible middle-other spacepoint indices
   vecmem::data::jagged_vector_view<uint32_t> m_middleOtherSPIndices;
+
+  // Array keeping the count of number of compatible space points for each middle SP
+  AtomicAccessorType m_countOtherMid;
 
   /// Configuration for the seed finding
   DeviceSeedfinderConfig m_config;
