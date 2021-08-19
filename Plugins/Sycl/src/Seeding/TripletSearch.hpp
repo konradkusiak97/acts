@@ -86,20 +86,63 @@ class TripletSearch {
             const auto numT = midTopDuplets.at(mid).size();
             const auto threadIdxForMiddleSP =
                 (idx - sumBotTopCombPrefix[mid] + sumCombUptoFirstMiddle);
+            /*
+                NOTES ON THREAD MAPPING TO SPACE POINTS
+                
+                We need to map bottom and top SP indices to this
+                thread.
+
+                So we are mapping one bottom and one top SP to this thread
+                (we already have a middle SP) which gives us a tiplet.
+
+                This is done in the following way: We
+                calculated the number of possible triplet
+                combinations for this middle SP (let it be
+                num_comp_bot*num_comp_top). Let num_comp_bot = 2
+                and num_comp_top=3 in this example. So we have 2
+                compatible bottom and 3 compatible top SP for this
+                middle SP.
+
+                That gives us 6 threads altogether:
+                            ===========================================
+                thread:    |  0   |  1   |  2   |  3   |  4   |  5   |
+                bottom id: | bot0 | bot0 | bot0 | bot1 | bot1 | bot1 |
+                top id:    | top0 | top1 | top2 | top0 | top1 | top2 |
+                            ===========================================
+
+                If we divide 6 by the number of compatible top SP
+                for this middle SP, or deviceNumTopDuplets[mid]
+                which is 3 now, we get the id for the bottom SP.
+                Similarly, if we take modulo
+                deviceNumTopDuplets[mid], we get the id for the
+                top SP.
+
+                So if threadIdxForMiddleSP = 3, then ib = 1 and it = 0.
+
+                We can use these ids together with
+                sumBotMidPrefix[mid] and deviceSumTop[mid] to be able
+                to index our other arrays.
+
+                These other arrays are deviceIndBot and deviceIndTop.
+
+                So to retrieve the bottom SP index for this thread, we'd
+                have to index the deviceIndBot array at
+                    sumBotMidPrefix[mid] + ib
+                which is the id for the bottom SP that we just calculated
+                (ib = 1 in the example).
+            */
 
             vecmem::device_vector<uint32_t>
-                      sumBotMidPrefix(m_sumBotMidView);
+                      sumBotMidPrefix(m_sumBotMidView),
+                      sumTopMidPrefix(m_sumTopMidView);                     
             const auto ib =
                 sumBotMidPrefix[mid] + (threadIdxForMiddleSP / numT);
-            vecmem::device_vector<uint32_t>
-                sumTopMidPrefix(m_sumTopMidView);
             const auto it =
                 sumTopMidPrefix[mid] + (threadIdxForMiddleSP % numT);
             vecmem::device_vector<detail::DeviceLinEqCircle>
-                                    deviceLinBot(m_linearBotView);
-            const auto linBotEq = deviceLinBot[ib];
-            vecmem::device_vector<detail::DeviceLinEqCircle>
+                                    deviceLinBot(m_linearBotView),
                                     deviceLinTop(m_linearTopView);
+            const auto linBotEq = deviceLinBot[ib];
             const auto linTopEq = deviceLinTop[it];
             const vecmem::device_vector<const detail::DeviceSpacePoint>
                                         middleSPs(m_middleSPsView);
@@ -165,7 +208,6 @@ class TripletSearch {
                     // this will be the t-th top space point for
                     // fixed middle and bottom SP
                     auto t = m_countTripletsAcc[ib].fetch_add(1);
-
                     /* 
                         sumBotTopCombPrefix[mid] - sumCombUptoFirstMiddle:
                         gives the memory location reserved for this

@@ -22,7 +22,7 @@
 namespace Acts::Sycl::detail {
 using AtomicAccessorFilter =
     sycl::accessor<uint32_t, 1, sycl::access::mode::read>;
-/// Filter performing Triplet Filter
+/// Functor performing Triplet Filter
 template<class AtomicAccessorType>
 class TripletFilter {
 
@@ -65,19 +65,16 @@ class TripletFilter {
     void operator()(cl::sycl::nd_item<1> item) const {
         if (item.get_global_linear_id() < m_numTripletFilterThreads) {
             vecmem::device_vector<uint32_t>
-                sumBotMidPrefix(m_sumBotMidView);
+                    sumBotMidPrefix(m_sumBotMidView),
+                    deviceIndMidBot(m_indMidBotCompView),
+                    deviceIndBotDuplets(m_indBotDupletView),
+                    sumBotTopCombPrefix(m_sumBotTopCombView);
+            vecmem::jagged_device_vector<uint32_t>
+                    midTopDuplets(m_midTopDupletView);
             const auto idx = sumBotMidPrefix[m_firstMiddle] +
                                 item.get_global_linear_id();
-            vecmem::device_vector<uint32_t> 
-                        deviceIndMidBot(m_indMidBotCompView);
             const auto mid = deviceIndMidBot[idx];
-            vecmem::device_vector<uint32_t>
-                deviceIndBotDuplets(m_indBotDupletView);
             const auto bot = deviceIndBotDuplets[idx];
-            vecmem::device_vector<uint32_t>
-                sumBotTopCombPrefix(m_sumBotTopCombView);
-            vecmem::jagged_device_vector<uint32_t>
-                midTopDuplets(m_midTopDupletView);
             const auto sumCombUptoFirstMiddle = 
                 sumBotTopCombPrefix[m_firstMiddle];
             const auto tripletBegin =

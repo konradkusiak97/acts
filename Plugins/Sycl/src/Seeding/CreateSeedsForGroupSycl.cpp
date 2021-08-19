@@ -272,7 +272,7 @@ void createSeedsForGroupSycl(
       // space points per middle space point.
       // Allocations for coordinate transformation.
 
-      // Buffers for linearization
+      // Buffers for Flattening the jagged vectors
       vecmem::data::vector_buffer<uint32_t>
           indBotDupletBuffer(edgesBottom, resource);
       copy.setup(indBotDupletBuffer);
@@ -304,7 +304,6 @@ void createSeedsForGroupSycl(
                 }
               });
         });
-
         auto indMidTopCompView = vecmem::get_data(indMidTopComp);
         auto midTopDupletView = vecmem::get_data(midTopDupletBuffer);
         const auto sumTopMidView = vecmem::get_data(sumTopMidPrefix);
@@ -326,9 +325,7 @@ void createSeedsForGroupSycl(
                 }
               });
         });
-
       }  // sync
-
       // Create the output data of the linear transform
       vecmem::data::vector_buffer
           <detail::DeviceLinEqCircle>
@@ -501,51 +498,7 @@ void createSeedsForGroupSycl(
 
         sycl::buffer<uint32_t> countTripletsBuf(deviceCountTriplets.data(),
                                                 edgesBottom);
-        /*
-          NOTES ON THREAD MAPPING TO SPACE POINTS
         
-          We need to map bottom and top SP indices to this
-          thread.
-
-          So we are mapping one bottom and one top SP to this thread
-          (we already have a middle SP) which gives us a tiplet.
-
-          This is done in the following way: We
-          calculated the number of possible triplet
-          combinations for this middle SP (let it be
-          num_comp_bot*num_comp_top). Let num_comp_bot = 2
-          and num_comp_top=3 in this example. So we have 2
-          compatible bottom and 3 compatible top SP for this
-          middle SP.
-
-          That gives us 6 threads altogether:
-                      ===========================================
-          thread:    |  0   |  1   |  2   |  3   |  4   |  5   |
-          bottom id: | bot0 | bot0 | bot0 | bot1 | bot1 | bot1 |
-          top id:    | top0 | top1 | top2 | top0 | top1 | top2 |
-                      ===========================================
-
-          If we divide 6 by the number of compatible top SP
-          for this middle SP, or deviceNumTopDuplets[mid]
-          which is 3 now, we get the id for the bottom SP.
-          Similarly, if we take modulo
-          deviceNumTopDuplets[mid], we get the id for the
-          top SP.
-
-          So if threadIdxForMiddleSP = 3, then ib = 1 and it = 0.
-
-          We can use these ids together with
-          sumBotMidPrefix[mid] and deviceSumTop[mid] to be able
-          to index our other arrays.
-
-          These other arrays are deviceIndBot and deviceIndTop.
-
-          So to retrieve the bottom SP index for this thread, we'd
-          have to index the deviceIndBot array at
-            sumBotMidPrefix[mid] + ib
-          which is the id for the bottom SP that we just calculated
-          (ib = 1 in the example).
-        */
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
           AtomicAccessor countTripletsAcc(countTripletsBuf, h);
