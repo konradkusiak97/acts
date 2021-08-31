@@ -39,7 +39,6 @@ class TripletFilter {
                   vecmem::data::vector_view<const detail::DeviceSpacePoint> topSPsView,
                   vecmem::data::vector_view<const detail::DeviceSpacePoint> middleSPsView,
                   vecmem::data::vector_view<const detail::DeviceSpacePoint> bottomSPsView,
-                  const AtomicAccessorType& countSeedsAcc,
                   const AtomicAccessorFilter& countTripletsAcc,
                   vecmem::data::vector_view<detail::SeedData> seedArrayView,
                   const DeviceSeedfinderConfig& config,
@@ -55,7 +54,6 @@ class TripletFilter {
           m_topSPsView(topSPsView),
           m_middleSPsView(middleSPsView),
           m_bottomSPsView(bottomSPsView),
-          m_countSeedsAcc(countSeedsAcc),
           m_countTripletsAcc(countTripletsAcc),
           m_seedArrayView(seedArrayView),
           m_config(config),
@@ -150,7 +148,6 @@ class TripletFilter {
 
                 if (m_cuts.singleSeedCut(weight, bottomSP, middleSP,
                                             topSP)) {
-                    const auto i = m_countSeedsAcc[0].fetch_add(1);
                     detail::SeedData D;
                     D.bottom = bot;
                     D.top = top;
@@ -158,7 +155,7 @@ class TripletFilter {
                     D.weight = weight;
                     vecmem::device_vector<detail::SeedData>
                                             seedArray(m_seedArrayView);
-                    seedArray[i] = D;
+                    seedArray.push_back(D);
                 }
             }
         }
@@ -175,7 +172,6 @@ class TripletFilter {
     vecmem::data::vector_view<const detail::DeviceSpacePoint> m_topSPsView;
     vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPsView;
     vecmem::data::vector_view<const detail::DeviceSpacePoint> m_bottomSPsView;
-    AtomicAccessorType m_countSeedsAcc;
     AtomicAccessorFilter m_countTripletsAcc;
     vecmem::data::vector_view<detail::SeedData> m_seedArrayView;
     DeviceSeedfinderConfig m_config;

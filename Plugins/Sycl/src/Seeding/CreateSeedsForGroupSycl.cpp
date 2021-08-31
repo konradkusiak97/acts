@@ -50,7 +50,7 @@ void createSeedsForGroupSycl(
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
-    vecmem::jagged_vector<detail::SeedData>& seeds) {
+    vecmem::jagged_vector<detail::SeedData>& seeds) __attribute__((optnone)) {
   // Each vector stores data of space points in simplified
   // structures of float variables
   // M: number of middle space points
@@ -453,14 +453,13 @@ void createSeedsForGroupSycl(
       // Other way around would allocating it inside the loop
       // -> less memory usage, but more frequent allocation and deallocation
       vecmem::data::vector_buffer<detail::SeedData>
-          seedArrayBuffer(maxMemoryAllocation, resource);
+          seedArrayBuffer(maxMemoryAllocation, 0, resource);
       copy.setup(seedArrayBuffer);
 
       // Counting the seeds in the second kernel allows us to copy back the
       // right number of seeds, and no more.
 
       seeds.resize(M);
-      uint32_t sumSeeds = 0;
       std::vector<uint32_t> deviceCountTriplets(edgesBottom, 0);
       // Do the triplet search and triplet filter for 2 sp fixed for middle
       // space points in the interval [firstMiddle, lastMiddle).
@@ -482,9 +481,8 @@ void createSeedsForGroupSycl(
         if (numTripletSearchThreads == 0)
           continue;
 
-        sumSeeds = 0;
         deviceCountTriplets.resize(edgesBottom, 0);
-
+        copy.setup(seedArrayBuffer);
         const auto numTripletFilterThreads =
             sumBotMidPrefix[lastMiddle] - sumBotMidPrefix[firstMiddle];
 
@@ -513,10 +511,8 @@ void createSeedsForGroupSycl(
           h.parallel_for<class triplet_search_kernel>(
               tripletSearchNDRange, kernel); });
         {
-          sycl::buffer<uint32_t> countSeedsBuf(&sumSeeds, 1);
           q->submit([&](cl::sycl::handler& h) {
             h.depends_on(tripletKernel);
-            AtomicAccessor countSeedsAcc(countSeedsBuf, h);
             auto countTripletsAcc = countTripletsBuf.get_access<
                 sycl::access::mode::read, sycl::access::target::global_buffer>(
                 h);
@@ -526,20 +522,18 @@ void createSeedsForGroupSycl(
                        indBotDupletBuffer, vecmem::get_data(sumBotTopCombPrefix),
                        midTopDupletBuffer, curvImpactBuffer, vecmem::get_data(topSPs),
                        vecmem::get_data(middleSPs), vecmem::get_data(bottomSPs),
-                       countSeedsAcc, countTripletsAcc, seedArrayBuffer, 
+                       countTripletsAcc, seedArrayBuffer, 
                        seedfinderConfig, deviceCuts);
             h.parallel_for<class filter_2sp_fixed_kernel>(
                 tripletFilterNDRange, kernel);
           });
-        } // sync, countSeedsBuf gets destroyed and its value is copied back to
-
-        // sumSeeds
+        } // sync, 
         // Retrieve results from triplet search
         vecmem::vector<detail::SeedData> seedArray(&resource);
         copy(seedArrayBuffer, seedArray);
-          for (uint32_t t = 0; t < sumSeeds; ++t) {
-            auto m = seedArray[t].middle;
-            seeds[m].push_back(seedArray[t]);
+
+          for (auto t = seedArray.begin(); t != seedArray.end(); ++t) {
+            seeds[t->middle].push_back(*t);
           }
       }
 
