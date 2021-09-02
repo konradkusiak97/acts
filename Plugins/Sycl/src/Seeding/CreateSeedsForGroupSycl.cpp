@@ -532,8 +532,8 @@ void createSeedsForGroupSycl(
         vecmem::vector<detail::SeedData> seedArray(&resource);
         copy(seedArrayBuffer, seedArray);
 
-          for (auto t = seedArray.begin(); t != seedArray.end(); ++t) {
-            seeds[t->middle].push_back(*t);
+          for (auto & t : seedArray) {
+            seeds[t.middle].push_back(t);
           }
       }
 
