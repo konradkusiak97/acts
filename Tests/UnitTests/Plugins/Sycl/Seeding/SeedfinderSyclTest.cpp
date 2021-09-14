@@ -20,6 +20,8 @@
 #include "Acts/Utilities/Logger.hpp"
 
 #include "vecmem/memory/sycl/shared_memory_resource.hpp"
+#include "vecmem/memory/sycl/device_memory_resource.hpp"
+#include "vecmem/memory/sycl/host_memory_resource.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -152,8 +154,9 @@ auto main(int argc, char** argv) -> int {
       queue(cmdlTool.deviceName,
             Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl));
   vecmem::sycl::shared_memory_resource resource(queue.getQueue());
+  vecmem::sycl::device_memory_resource device_resource(queue.getQueue());
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
-      config, deviceAtlasCuts, queue, resource);
+      config, deviceAtlasCuts, queue, resource, &device_resource);
   Acts::Seedfinder<SpacePoint> normalSeedfinder(config);
   auto globalTool =
       [=](const SpacePoint& sp, float /*unused*/, float /*unused*/,

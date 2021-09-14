@@ -29,7 +29,8 @@ class Seedfinder {
       Acts::SeedfinderConfig<external_spacepoint_t> config,
       const Acts::Sycl::DeviceExperimentCuts& cuts,
       Acts::Sycl::QueueWrapper wrappedQueue,
-      vecmem::memory_resource& resource);
+      vecmem::memory_resource& resource,
+      vecmem::memory_resource* device_resource = nullptr);
 
   ~Seedfinder() = default;
   Seedfinder() = delete;
@@ -63,6 +64,9 @@ class Seedfinder {
 
   /// Memory resource to use in the seed-finder
   vecmem::memory_resource* m_resource;
+
+  /// Device memory resource for use
+  vecmem::memory_resource* m_device_resource;
 };
 
 }  // namespace Acts::Sycl

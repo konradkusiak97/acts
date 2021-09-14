@@ -41,10 +41,11 @@ namespace Acts::Sycl {
 void createSeedsForGroupSycl(
     QueueWrapper wrappedQueue,
     vecmem::memory_resource& resource,
+    vecmem::memory_resource* device_resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
     const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
     const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
-    vecmem::jagged_vector<detail::SeedData>& seeds);
+    std::vector<std::vector<detail::SeedData>>& seeds);
 }  // namespace Acts::Sycl
