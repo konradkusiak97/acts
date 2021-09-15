@@ -50,9 +50,9 @@ void createSeedsForGroupSycl(
     vecmem::memory_resource* device_resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
-    const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds) __attribute__((optnone)) {
   // Each vector stores data of space points in simplified
   // structures of float variables
@@ -99,22 +99,22 @@ void createSeedsForGroupSycl(
     cl::sycl::nd_range<2> topDupletNDRange =
         calculate2DimNDRange(M, T, maxWorkGroupSize);
 
-    std::unique_ptr<vecmem::vector<detail::DeviceSpacePoint>> deviceBottomSPs;
-    std::unique_ptr<vecmem::vector<detail::DeviceSpacePoint>> deviceTopSPs;
-    std::unique_ptr<vecmem::vector<detail::DeviceSpacePoint>> deviceMiddleSPs;
+    std::unique_ptr<vecmem::data::vector_buffer<detail::DeviceSpacePoint>> deviceBottomSPs;
+    std::unique_ptr<vecmem::data::vector_buffer<detail::DeviceSpacePoint>> deviceTopSPs;
+    std::unique_ptr<vecmem::data::vector_buffer<detail::DeviceSpacePoint>> deviceMiddleSPs;
 
-    vecmem::data::vector_view<const detail::DeviceSpacePoint> bottomSPsView;
-    vecmem::data::vector_view<const detail::DeviceSpacePoint> topSPsView;
-    vecmem::data::vector_view<const detail::DeviceSpacePoint> middleSPsView;
+    vecmem::data::vector_view<detail::DeviceSpacePoint> bottomSPsView;
+    vecmem::data::vector_view<detail::DeviceSpacePoint> topSPsView;
+    vecmem::data::vector_view<detail::DeviceSpacePoint> middleSPsView;
 
     if (!device_resource){
       bottomSPsView = vecmem::get_data(bottomSPs);
       topSPsView = vecmem::get_data(topSPs);
       middleSPsView = vecmem::get_data(middleSPs);
     } else {
-      deviceBottomSPs = std::make_unique<vecmem::vector<detail::DeviceSpacePoint>>(device_resource);
-      deviceTopSPs = std::make_unique<vecmem::vector<detail::DeviceSpacePoint>>(device_resource);
-      deviceMiddleSPs = std::make_unique<vecmem::vector<detail::DeviceSpacePoint>>(device_resource);
+      deviceBottomSPs = std::make_unique<vecmem::data::vector_buffer<detail::DeviceSpacePoint>>(B, *device_resource);
+      deviceTopSPs = std::make_unique<vecmem::data::vector_buffer<detail::DeviceSpacePoint>>(T, *device_resource);
+      deviceMiddleSPs = std::make_unique<vecmem::data::vector_buffer<detail::DeviceSpacePoint>>(M, *device_resource);
 
       copy(vecmem::get_data(bottomSPs), *deviceBottomSPs);
       copy(vecmem::get_data(topSPs), *deviceTopSPs);

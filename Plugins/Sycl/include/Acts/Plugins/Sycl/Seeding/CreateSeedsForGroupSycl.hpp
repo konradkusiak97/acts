@@ -44,8 +44,8 @@ void createSeedsForGroupSycl(
     vecmem::memory_resource* device_resource,
     const detail::DeviceSeedfinderConfig& seedfinderConfig,
     const DeviceExperimentCuts& deviceCuts,
-    const vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
-    const vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
-    const vecmem::vector<detail::DeviceSpacePoint>& topSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& bottomSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& middleSPs,
+    vecmem::vector<detail::DeviceSpacePoint>& topSPs,
     std::vector<std::vector<detail::SeedData>>& seeds);
 }  // namespace Acts::Sycl

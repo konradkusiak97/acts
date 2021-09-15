@@ -153,7 +153,7 @@ auto main(int argc, char** argv) -> int {
   Acts::Sycl::QueueWrapper
       queue(cmdlTool.deviceName,
             Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl));
-  vecmem::sycl::shared_memory_resource resource(queue.getQueue());
+  vecmem::sycl::host_memory_resource resource(queue.getQueue());
   vecmem::sycl::device_memory_resource device_resource(queue.getQueue());
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
       config, deviceAtlasCuts, queue, resource, &device_resource);
