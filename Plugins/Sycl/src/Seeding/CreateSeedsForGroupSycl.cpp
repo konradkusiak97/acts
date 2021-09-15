@@ -190,18 +190,30 @@ void createSeedsForGroupSycl(
     std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceSumBotMidPrefix;
     std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceSumTopMidPrefix;
     std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceSumBotTopCombPrefix;
+
+    std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceIndMidBotComp;
+    std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceIndMidTopComp;
     if (!device_resource){
       deviceSumBotMidPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, resource);
       deviceSumTopMidPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, resource);
       deviceSumBotTopCombPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, resource);
+
+      deviceIndMidBotComp = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(edges, resource);
+      deviceIndMidTopComp = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M, resource);
     } else {
       deviceSumBotMidPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, *device_resource);
       deviceSumTopMidPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, *device_resource);
       deviceSumBotTopCombPrefix = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M+1, *device_resource);
+
+      deviceIndMidBotComp = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M, *device_resource);
+      deviceIndMidTopComp = std::make_unique<vecmem::data::vector_buffer<uint32_t>>(M, *device_resource);
     }
     copy.setup(*deviceSumBotMidPrefix);
     copy.setup(*deviceSumTopMidPrefix);
     copy.setup(*deviceSumBotTopCombPrefix);
+
+    copy.setup(*deviceIndMidBotComp);
+    copy.setup(*deviceIndMidTopComp);
     {
       cl::sycl::nd_range<1> middleNdRange = 
             calculate1DimNDRange(M, maxWorkGroupSize);
@@ -224,12 +236,19 @@ void createSeedsForGroupSycl(
               deviceSumBotTopComb[0] = 0;
               if (idx < M+1 && idx > 0) {
                 vecmem::jagged_device_vector<const uint32_t>
-                    midBotDuplets(midBotDupletView),
-                    midTopDuplets(midTopDupletView);
-                deviceSumBotMid[idx] = deviceSumBotMid[idx-1] + midBotDuplets[idx-1].size();
-                deviceSumTopMid[idx] = deviceSumTopMid[idx-1] + midTopDuplets[idx-1].size();
-                deviceSumBotTopComb[idx] = deviceSumBotTopComb[idx-1] + midBotDuplets[idx-1].size()
-                                                                      * midTopDuplets[idx-1].size();
+                        midBotDuplets(midBotDupletView),
+                        midTopDuplets(midTopDupletView);
+                uint32_t sumBot = 0;
+                uint32_t sumTop = 0;
+                uint32_t sumComb = 0;
+                for (uint32_t i = 0; i < idx; ++i){
+                  sumBot += midBotDuplets[i].size();
+                  sumTop += midTopDuplets[i].size();
+                  sumComb += midBotDuplets[i].size() * midTopDuplets[i].size();
+                }
+                deviceSumBotMid[idx] = sumBot;
+                deviceSumTopMid[idx] = sumTop;
+                deviceSumBotTopComb[idx] = sumComb;
               }
             }
         );
