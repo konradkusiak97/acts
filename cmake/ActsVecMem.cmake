@@ -30,7 +30,7 @@ message( STATUS "Building VecMem as part of the Acts project" )
 # Declare where to get VecMem from.
 FetchContent_Declare( VecMem
    GIT_REPOSITORY "https://github.com/acts-project/vecmem.git"
-   GIT_TAG "JaggedVectorUpdate-main-20210825" )
+   GIT_TAG "9b1a7c3fa6efa63a69e09f3a736d56c9c82fdb45" )
 
 # Prevent VecMem from building its tests. As it would interfere with how Acts
 # builds/uses GoogleTest.
