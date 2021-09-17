@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -79,6 +79,8 @@ Seedfinder<external_spacepoint_t>::createSeedsForGroup(
   // that are easily comprehensible by the GPU. This allows us
   // less memory access operations than with simple (float) arrays.
 
+  // Creating VecMem vectors of the space points, linked to the host/shared memory resource
+  // They will be filled and passed to CreateSeedsForGroup().
   vecmem::vector<detail::DeviceSpacePoint> deviceBottomSPs(m_resource);
   vecmem::vector<detail::DeviceSpacePoint> deviceMiddleSPs(m_resource);
   vecmem::vector<detail::DeviceSpacePoint> deviceTopSPs(m_resource);

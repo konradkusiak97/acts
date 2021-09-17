@@ -1,6 +1,6 @@
 // This file is part of the Acts project.
 //
-// Copyright (C) 2020 CERN for the benefit of the Acts project
+// Copyright (C) 2020-2021 CERN for the benefit of the Acts project
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -110,7 +110,7 @@ class LinearTransform {
          (result.cotTheta * result.cotTheta) * (middleSP.varR + otherSP.varR)) *
         iDeltaR2;
 
-    // Store the result object in device global memory.
+    // Store the result in the result vector
     vecmem::device_vector<detail::DeviceLinEqCircle>
                           resultArray(m_resultArray);
     resultArray[idx] = result;
