@@ -80,10 +80,10 @@ void createSeedsForGroupSycl(
   vecmem::vector<uint32_t> indMidBotComp(&resource);
   vecmem::vector<uint32_t> indMidTopComp(&resource);
 
-  try {
+  //try {
     auto* q = wrappedQueue.getQueue();
     uint64_t globalBufferSize =
-        q->get_device().get_info<cl::sycl::info::device::global_mem_size>();
+        q->get_device().get_info<cl::sycl::info::device::global_mem_size>() * 0.6;
     uint64_t maxWorkGroupSize =
         q->get_device().get_info<cl::sycl::info::device::max_work_group_size>();
     vecmem::sycl::copy copy(wrappedQueue.getQueue());
@@ -629,11 +629,11 @@ void createSeedsForGroupSycl(
       //************************************************//
     }
 
-  } catch (cl::sycl::exception const& e) {
+  /*} catch (cl::sycl::exception const& e) {
     ACTS_LOCAL_LOGGER(
         Acts::getDefaultLogger("SyclSeeding", Acts::Logging::INFO));
     ACTS_FATAL("Caught synchronous SYCL exception:\n" << e.what())
     throw;
-  }
+  }*/
 };
 }  // namespace Acts::Sycl
