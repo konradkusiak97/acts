@@ -16,7 +16,7 @@ message( STATUS "Building VecMem as part of the Acts project" )
 # Declare where to get VecMem from.
 set( ACTS_VECMEM_GIT_REPOSITORY "https://github.com/acts-project/vecmem.git"
    CACHE STRING "Git repository to take VecMem from" )
-set( ACTS_VECMEM_GIT_TAG "7bb80f16209f842ec1296a8e854319f8c161fdba" CACHE STRING "Version of VecMem to build" )
+set( ACTS_VECMEM_GIT_TAG "v0.7.0" CACHE STRING "Version of VecMem to build" )
 mark_as_advanced( ACTS_VECMEM_GIT_REPOSITORY ACTS_VECMEM_GIT_TAG )
 FetchContent_Declare( VecMem
    GIT_REPOSITORY "${ACTS_VECMEM_GIT_REPOSITORY}"
