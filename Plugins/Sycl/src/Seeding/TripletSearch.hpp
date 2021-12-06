@@ -29,7 +29,7 @@
 namespace Acts::Sycl::detail {
 
 /// Functor performing Triplet Search
-template <class AtomicAccessorType>
+
 class TripletSearch {
  public:
   /// Constructor
@@ -44,7 +44,7 @@ class TripletSearch {
       vecmem::data::vector_view<detail::DeviceLinEqCircle> linearTopView,
       vecmem::data::vector_view<const detail::DeviceSpacePoint> middleSPsView,
       vecmem::data::vector_view<uint32_t> indTopDupletview,
-      const AtomicAccessorType& countTripletsAcc,
+      vecmem::data::vector_view<uint32_t> countTripletsView,
       const DeviceSeedfinderConfig& config,
       vecmem::data::vector_view<detail::DeviceTriplet> curvImpactView)
       : m_sumBotTopCombView(sumBotTopCombView),
@@ -58,7 +58,7 @@ class TripletSearch {
         m_linearTopView(linearTopView),
         m_middleSPsView(middleSPsView),
         m_indTopDupletView(indTopDupletview),
-        m_countTripletsAcc(countTripletsAcc),
+        m_countTripletsView(countTripletsView),
         m_config(config),
         m_curvImpactView(curvImpactView) {}
 
@@ -204,7 +204,11 @@ class TripletSearch {
           const auto top = deviceIndTopDuplets[it];
           // this will be the t-th top space point for
           // fixed middle and bottom SP
-          auto t = m_countTripletsAcc[ib].fetch_add(1);
+          vecmem::device_vector<uint32_t> deviceCountTriplets(m_countTripletsView);
+          sycl::ext::oneapi::atomic_ref<uint32_t, sycl::ext::oneapi::memory_order::relaxed,
+                                   sycl::memory_scope::device,
+                                   sycl::access::address_space::global_space> obj (deviceCountTriplets[ib]);
+          auto t = obj.fetch_add(1);
           /*
               sumBotTopCombPrefix[mid] - sumCombUptoFirstMiddle:
               gives the memory location reserved for this
@@ -255,7 +259,7 @@ class TripletSearch {
   vecmem::data::vector_view<detail::DeviceLinEqCircle> m_linearTopView;
   vecmem::data::vector_view<const detail::DeviceSpacePoint> m_middleSPsView;
   vecmem::data::vector_view<uint32_t> m_indTopDupletView;
-  AtomicAccessorType m_countTripletsAcc;
+  vecmem::data::vector_view<uint32_t> m_countTripletsView;
   DeviceSeedfinderConfig m_config;
   vecmem::data::vector_view<detail::DeviceTriplet> m_curvImpactView;
 };  // struct TripletSearch

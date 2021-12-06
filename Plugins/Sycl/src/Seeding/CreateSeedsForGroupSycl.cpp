@@ -80,7 +80,7 @@ void createSeedsForGroupSycl(
   vecmem::vector<uint32_t> indMidBotComp(&resource);
   vecmem::vector<uint32_t> indMidTopComp(&resource);
 
-  //try {
+  try {
     auto* q = wrappedQueue.getQueue();
     uint64_t globalBufferSize =
         q->get_device().get_info<cl::sycl::info::device::global_mem_size>() * 0.6;
@@ -150,12 +150,6 @@ void createSeedsForGroupSycl(
             (device_resource ? &resource : nullptr));
     copy.setup(*midBotDupletBuffer);
     copy.setup(*midTopDupletBuffer);
-
-    // Atomic accessor type used throughout the code.
-    using AtomicAccessor =
-        sycl::ONEAPI::atomic_accessor<uint32_t, 1,
-                                      sycl::ONEAPI::memory_order::relaxed,
-                                      sycl::ONEAPI::memory_scope::device>;
 
     // Perform the middle-bottom duplet search.
     auto middleBottomEvent = q->submit([&](cl::sycl::handler& h) {
@@ -548,7 +542,21 @@ void createSeedsForGroupSycl(
       // right number of seeds, and no more.
 
       seeds.resize(M);
-      std::vector<uint32_t> deviceCountTriplets(edgesBottom, 0);
+        vecmem::vector<uint32_t> countTriplets(&resource);
+        countTriplets.resize(edgesBottom, 0);
+
+        std::unique_ptr<vecmem::data::vector_buffer<uint32_t>> deviceCountTriplets;
+        vecmem::data::vector_view<uint32_t> countTripletsView;
+
+        if (!device_resource) {
+            countTripletsView = vecmem::get_data(countTriplets);
+        } else {
+            deviceCountTriplets = 
+                std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                    edgesBottom, *device_resource);
+            copy(vecmem::get_data(countTriplets), *deviceCountTriplets);
+            countTripletsView = vecmem::get_data(*deviceCountTriplets);
+        }
       // Do the triplet search and triplet filter for 2 sp fixed for middle
       // space points in the interval [firstMiddle, lastMiddle).
 
@@ -571,7 +579,6 @@ void createSeedsForGroupSycl(
           continue;
         }
 
-        deviceCountTriplets.resize(edgesBottom, 0);
         copy.setup(*seedArrayBuffer);
         const auto numTripletFilterThreads =
             sumBotMidPrefix[lastMiddle] - sumBotMidPrefix[firstMiddle];
@@ -584,17 +591,14 @@ void createSeedsForGroupSycl(
         cl::sycl::nd_range<1> tripletFilterNDRange =
             calculate1DimNDRange(numTripletFilterThreads, maxWorkGroupSize);
 
-        sycl::buffer<uint32_t> countTripletsBuf(deviceCountTriplets.data(),
-                                                edgesBottom);
-
         auto tripletKernel = q->submit([&](cl::sycl::handler& h) {
           h.depends_on({linB, linT});
-          AtomicAccessor countTripletsAcc(countTripletsBuf, h);
-          detail::TripletSearch<AtomicAccessor> kernel(
+
+          detail::TripletSearch kernel(
               sumBotTopCombView, numTripletSearchThreads, firstMiddle,
               lastMiddle, *midTopDupletBuffer, sumBotMidView, sumTopMidView,
               *linearBotBuffer, *linearTopBuffer, middleSPsView,
-              *indTopDupletBuffer, countTripletsAcc, seedfinderConfig,
+              *indTopDupletBuffer, countTripletsView, seedfinderConfig,
               *curvImpactBuffer);
           h.parallel_for<class triplet_search_kernel>(tripletSearchNDRange,
                                                       kernel);
@@ -602,14 +606,11 @@ void createSeedsForGroupSycl(
         {
           q->submit([&](cl::sycl::handler& h) {
             h.depends_on(tripletKernel);
-            auto countTripletsAcc = countTripletsBuf.get_access<
-                sycl::access::mode::read, sycl::access::target::global_buffer>(
-                h);
-            detail::TripletFilter<AtomicAccessor> kernel(
+            detail::TripletFilter kernel(
                 numTripletFilterThreads, sumBotMidView, firstMiddle,
                 indMidBotCompView, *indBotDupletBuffer, sumBotTopCombView,
                 *midTopDupletBuffer, *curvImpactBuffer, topSPsView,
-                middleSPsView, bottomSPsView, countTripletsAcc,
+                middleSPsView, bottomSPsView, countTripletsView,
                 *seedArrayBuffer, seedfinderConfig, deviceCuts);
             h.parallel_for<class filter_2sp_fixed_kernel>(tripletFilterNDRange,
                                                           kernel);
@@ -629,11 +630,11 @@ void createSeedsForGroupSycl(
       //************************************************//
     }
 
-  /*} catch (cl::sycl::exception const& e) {
+  } catch (cl::sycl::exception const& e) {
     ACTS_LOCAL_LOGGER(
         Acts::getDefaultLogger("SyclSeeding", Acts::Logging::INFO));
     ACTS_FATAL("Caught synchronous SYCL exception:\n" << e.what())
     throw;
-  }*/
+  }
 };
 }  // namespace Acts::Sycl

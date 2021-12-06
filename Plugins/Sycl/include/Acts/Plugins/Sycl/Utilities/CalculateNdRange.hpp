@@ -22,6 +22,7 @@ namespace Acts::Sycl {
 /// multiple of workGroupSize that is not smaller than numThreads.
 ///
 /// @return a one dimensional nd_range of threads
+
 cl::sycl::nd_range<1> calculate1DimNDRange(const uint32_t numThreads,
                                            const uint32_t workGroupSize);
 
@@ -47,6 +48,7 @@ cl::sycl::nd_range<1> calculate1DimNDRange(const uint32_t numThreads,
 /// of the work group size in that dimension
 ///
 /// @return a two dimensional nd_range of threads
+
 cl::sycl::nd_range<2> calculate2DimNDRange(const uint32_t numThreadsDim0,
                                            const uint32_t numThreadsDim1,
                                            const uint32_t workGroupSize);

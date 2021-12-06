@@ -10,6 +10,7 @@
 #include "Acts/Plugins/Sycl/Utilities/CalculateNdRange.hpp"
 
 namespace Acts::Sycl {
+
 cl::sycl::nd_range<1> calculate1DimNDRange(const uint32_t numThreads,
                                            const uint32_t workGroupSize) {
   auto q = (numThreads + workGroupSize - 1) / workGroupSize;
