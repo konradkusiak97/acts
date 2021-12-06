@@ -314,86 +314,88 @@ void createSeedsForGroupSycl(
       vecmem::data::vector_view<uint32_t> indMidBotCompView, indMidTopCompView;
       // Copy indices from temporary matrices to final, optimal size vectors.
       // We will use these for easier indexing.
-      {
-        if (!device_resource) {
-          sumBotMidView = vecmem::get_data(sumBotMidPrefix);
-          sumTopMidView = vecmem::get_data(sumTopMidPrefix);
-          sumBotTopCombView = vecmem::get_data(sumBotTopCombPrefix);
+    
+    if (!device_resource) {
+        sumBotMidView = vecmem::get_data(sumBotMidPrefix);
+        sumTopMidView = vecmem::get_data(sumTopMidPrefix);
+        sumBotTopCombView = vecmem::get_data(sumBotTopCombPrefix);
 
-          indMidBotCompView = vecmem::get_data(indMidBotComp);
-          indMidTopCompView = vecmem::get_data(indMidTopComp);
-        } else {
-          device_sumBotMidPrefix =
-              std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
-                  M + 1, *device_resource);
-          device_sumTopMidPrefix =
-              std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
-                  M + 1, *device_resource);
-          device_sumBotTopCombPrefix =
-              std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
-                  M + 1, *device_resource);
+        indMidBotCompView = vecmem::get_data(indMidBotComp);
+        indMidTopCompView = vecmem::get_data(indMidTopComp);
+    } else {
+        device_sumBotMidPrefix =
+            std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                M + 1, *device_resource);
+        device_sumTopMidPrefix =
+            std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                M + 1, *device_resource);
+        device_sumBotTopCombPrefix =
+            std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                M + 1, *device_resource);
 
-          device_indMidBotComp =
-              std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
-                  edgesBottom, *device_resource);
-          device_indMidTopComp =
-              std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
-                  edgesTop, *device_resource);
+        device_indMidBotComp =
+            std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                edgesBottom, *device_resource);
+        device_indMidTopComp =
+            std::make_unique<vecmem::data::vector_buffer<uint32_t>>(
+                edgesTop, *device_resource);
 
-          copy(vecmem::get_data(sumBotMidPrefix), *device_sumBotMidPrefix);
-          copy(vecmem::get_data(sumTopMidPrefix), *device_sumTopMidPrefix);
-          copy(vecmem::get_data(sumBotTopCombPrefix),
-               *device_sumBotTopCombPrefix);
+        copy(vecmem::get_data(sumBotMidPrefix), *device_sumBotMidPrefix);
+        copy(vecmem::get_data(sumTopMidPrefix), *device_sumTopMidPrefix);
+        copy(vecmem::get_data(sumBotTopCombPrefix),
+            *device_sumBotTopCombPrefix);
 
-          copy(vecmem::get_data(indMidBotComp), *device_indMidBotComp);
-          copy(vecmem::get_data(indMidTopComp), *device_indMidTopComp);
+        copy(vecmem::get_data(indMidBotComp), *device_indMidBotComp);
+        copy(vecmem::get_data(indMidTopComp), *device_indMidTopComp);
 
-          sumBotMidView = vecmem::get_data(*device_sumBotMidPrefix);
-          sumTopMidView = vecmem::get_data(*device_sumTopMidPrefix);
-          sumBotTopCombView = vecmem::get_data(*device_sumBotTopCombPrefix);
+        sumBotMidView = vecmem::get_data(*device_sumBotMidPrefix);
+        sumTopMidView = vecmem::get_data(*device_sumTopMidPrefix);
+        sumBotTopCombView = vecmem::get_data(*device_sumBotTopCombPrefix);
 
-          indMidBotCompView = vecmem::get_data(*device_indMidBotComp);
-          indMidTopCompView = vecmem::get_data(*device_indMidTopComp);
+        indMidBotCompView = vecmem::get_data(*device_indMidBotComp);
+        indMidTopCompView = vecmem::get_data(*device_indMidTopComp);
         }
         auto midBotDupletView = vecmem::get_data(*midBotDupletBuffer);
         auto indBotDupletView = vecmem::get_data(*indBotDupletBuffer);
-        q->submit([&](cl::sycl::handler& h) {
-          h.parallel_for<ind_copy_bottom_kernel>(
-              edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
+        auto prefixEventBottom = q->submit([&](cl::sycl::handler& h) {
+            h.parallel_for<ind_copy_bottom_kernel>(
+                edgesBotNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 if (idx < edgesBottom) {
-                  vecmem::device_vector<uint32_t> deviceIndMidBot(
-                      indMidBotCompView),
-                      sumBotMidPrefix(sumBotMidView),
-                      indBotDuplets(indBotDupletView);
-                  vecmem::jagged_device_vector<const uint32_t> midBotDuplets(
-                      midBotDupletView);
-                  auto mid = deviceIndMidBot[idx];
-                  auto ind = midBotDuplets[mid][idx - sumBotMidPrefix[mid]];
-                  indBotDuplets[idx] = ind;
+                    vecmem::device_vector<uint32_t> deviceIndMidBot(
+                        indMidBotCompView),
+                        sumBotMidPrefix(sumBotMidView),
+                        indBotDuplets(indBotDupletView);
+                    vecmem::jagged_device_vector<const uint32_t> midBotDuplets(
+                        midBotDupletView);
+                    auto mid = deviceIndMidBot[idx];
+                    auto ind = midBotDuplets[mid][idx - sumBotMidPrefix[mid]];
+                    indBotDuplets[idx] = ind;
                 }
-              });
+                });
         });
         auto midTopDupletView = vecmem::get_data(*midTopDupletBuffer);
         auto indTopDupletView = vecmem::get_data(*indTopDupletBuffer);
-        q->submit([&](cl::sycl::handler& h) {
-          h.parallel_for<ind_copy_top_kernel>(
-              edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
+        auto prefixEventTop = q->submit([&](cl::sycl::handler& h) {
+            h.parallel_for<ind_copy_top_kernel>(
+                edgesTopNdRange, [=](cl::sycl::nd_item<1> item) {
                 auto idx = item.get_global_linear_id();
                 if (idx < edgesTop) {
-                  vecmem::device_vector<uint32_t> deviceIndMidTop(
-                      indMidTopCompView),
-                      sumTopMidPrefix(sumTopMidView),
-                      indTopDuplets(indTopDupletView);
-                  vecmem::jagged_device_vector<const uint32_t> midTopDuplets(
-                      midTopDupletView);
-                  auto mid = deviceIndMidTop[idx];
-                  auto ind = midTopDuplets[mid][idx - sumTopMidPrefix[mid]];
-                  indTopDuplets[idx] = ind;
+                    vecmem::device_vector<uint32_t> deviceIndMidTop(
+                        indMidTopCompView),
+                        sumTopMidPrefix(sumTopMidView),
+                        indTopDuplets(indTopDupletView);
+                    vecmem::jagged_device_vector<const uint32_t> midTopDuplets(
+                        midTopDupletView);
+                    auto mid = deviceIndMidTop[idx];
+                    auto ind = midTopDuplets[mid][idx - sumTopMidPrefix[mid]];
+                    indTopDuplets[idx] = ind;
                 }
-              });
+                });
         });
-      }  // sync
+        prefixEventBottom.wait_and_throw();
+        prefixEventTop.wait_and_throw();
+        // sync
       // Create the output data of the linear transform
       std::unique_ptr<vecmem::data::vector_buffer<detail::DeviceLinEqCircle>>
           linearBotBuffer;
@@ -603,7 +605,7 @@ void createSeedsForGroupSycl(
           h.parallel_for<class triplet_search_kernel>(tripletSearchNDRange,
                                                       kernel);
         });
-        {
+    
           q->submit([&](cl::sycl::handler& h) {
             h.depends_on(tripletKernel);
             detail::TripletFilter kernel(
@@ -614,8 +616,8 @@ void createSeedsForGroupSycl(
                 *seedArrayBuffer, seedfinderConfig, deviceCuts);
             h.parallel_for<class filter_2sp_fixed_kernel>(tripletFilterNDRange,
                                                           kernel);
-          });
-        }  // sync
+          }).wait_and_throw();
+          // sync
         // Retrieve results from triplet search
         std::vector<detail::SeedData> seedArray;
         copy(*seedArrayBuffer, seedArray);
