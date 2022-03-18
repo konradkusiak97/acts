@@ -37,6 +37,8 @@
 #include "SpacePoint.hpp"
 #include "vecmem/memory/sycl/device_memory_resource.hpp"
 #include "vecmem/memory/sycl/host_memory_resource.hpp"
+#include "vecmem/memory/sycl/shared_memory_resource.hpp"
+#include "vecmem/memory/binary_page_memory_resource.hpp"
 
 using namespace Acts::UnitLiterals;
 
@@ -164,8 +166,12 @@ auto main(int argc, char** argv) -> int {
       Acts::getDefaultLogger("Sycl::QueueWrapper", logLvl));
   vecmem::sycl::host_memory_resource resource(queue.getQueue());
   vecmem::sycl::device_memory_resource device_resource(queue.getQueue());
+  vecmem::sycl::shared_memory_resource sh_mem(queue.getQueue());
+  vecmem::binary_page_memory_resource b_sh_mem(sh_mem);
+  vecmem::binary_page_memory_resource b_host_res(resource);
+  vecmem::binary_page_memory_resource b_dev_res(device_resource);
   Acts::Sycl::Seedfinder<SpacePoint> syclSeedfinder(
-      config, deviceAtlasCuts, queue, resource, &device_resource);
+      config, deviceAtlasCuts, queue, b_sh_mem);
   Acts::Seedfinder<SpacePoint> normalSeedfinder(config);
   auto globalTool =
       [=](const SpacePoint& sp, float /*unused*/, float /*unused*/,
